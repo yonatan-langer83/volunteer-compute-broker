@@ -290,8 +290,8 @@ Other commands: `claim`, `release`, `retry`, `expire-leases`, `list-tasks --proj
 
 ## Known gaps
 
-- Registration reads a local manifest. There is no GitHub webhook, signature check, or sync.
-- Results stay in the database. The broker does not open a pull request or comment on GitHub.
+- Registration reads a local manifest posted by the admin. The task list does not sync from GitHub yet.
+- The GitHub App opens a pull request per submission and treats merge as accept and close as reject (`src/github-app.ts`, `src/github-routes.ts`). Diffs are applied by the broker's own unified-diff applier through the GitHub API; binary files and renames with edits are not supported.
 - Spend is the task's `estimatedCostUsd`, not measured tokens.
 - The lease is refreshed when a run starts, not while the provider call is in flight. A run that outlives the lease can lose the write.
 - Failed tasks wait for `retry` and then stop at 3 attempts.

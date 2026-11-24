@@ -1,27 +1,28 @@
 # Joining the volunteer pool
 
-This is for a nonprofit open-source project on GitHub. The broker at `https://volunteer.apishelf.dev` keeps the task list and the single-claim rule. It never gets a token that can write to your repository. Your repository opens its own pull requests.
+This is for a nonprofit or public-good open-source project on GitHub. Joining takes two files and one click.
 
-Copy `templates/project-starter/` into the repository and change the project name. The files that matter:
+1. **Add two files** to your repository (copy them from `templates/project-starter/`):
 
-| File | Why it is there |
-| --- | --- |
-| `volunteer-compute.yaml` | The task list. Every task has to pass `npm run cli -- lint --manifest volunteer-compute.yaml`. |
-| `AGENTS.md` | The standing rules a volunteer agent reads with the brief. |
-| `.github/workflows/test.yml` | Runs the commands named in the tasks. |
-| `.github/workflows/volunteer-apply.yml` | After you accept a diff, this opens a pull request with the repository's own `GITHUB_TOKEN`. |
+   | File | Why it is there |
+   | --- | --- |
+   | `volunteer-compute.yaml` | The task list. Every task must pass the task standard below (`npm run cli -- lint --manifest volunteer-compute.yaml`). |
+   | `AGENTS.md` | The standing rules a volunteer's AI reads with every brief: setup, style, what not to touch. |
 
-## Register
+   You also need tests that run on pull requests (any CI). The starter's `.github/workflows/test.yml` is an example.
 
-For the current test, an admin registers the manifest. From a checkout of this broker, with the admin token:
+2. **Install the Volunteer Compute Broker GitHub App** on that repository. It asks for permission to write contents and pull requests in the repositories you choose, nothing else.
 
-```bash
-export BROKER_URL=https://volunteer.apishelf.dev
-export BROKER_ADMIN_TOKEN=...
-npm run cli -- register-project --manifest path/to/volunteer-compute.yaml --repo path/to/the/repo
-```
+3. **Ask to be registered.** During the test phase the broker admin registers your task list. Repo-ownership checks and a project application form come next.
 
-That posts the YAML and `AGENTS.md`. Later, ownership should be checked before a project name can be registered: the broker issues a nonce, the repository commits it at `.well-known/volunteer-compute`, and the broker reads that file from the public GitHub URL. That check is not built yet. Until it is, only the admin token can register a project.
+## What you do day to day
+
+Nothing new. When a volunteer submits work, a pull request appears in your repository, opened by the app, with the volunteer's report and the task's acceptance criteria. Your CI runs on it as usual.
+
+- **Merge it** → the task is marked done, tasks that depend on it open up, and the volunteer's impact counts on the public page.
+- **Close it without merging** → the task goes back to the pool for another volunteer.
+
+The app never merges anything and never touches a pull request it did not open. It refuses any diff that touches `.github/`.
 
 ## The task standard
 
@@ -91,21 +92,10 @@ A task above $100 is not a volunteer task. Split it. A task can also be too big 
 
 ## How finished work gets back
 
-1. The volunteer submits a unified diff through MCP. They can also submit a pull request URL if they already opened one themselves.
-2. You read the summary and diff with `GET /admin/tasks?project=<id>` (admin token). Submissions stay off the public page until you accept them, because they are unreviewed.
-3. You accept or reject it:
+1. A volunteer's AI submits a unified diff through MCP.
+2. The broker applies the diff to your default branch through the GitHub API, on a branch called `volunteer/<task-id>-<commit>`, and opens a pull request. The commit is credited to the volunteer.
+3. You review and merge or close it on GitHub. The app's webhook tells the broker which.
 
-```bash
-npm run cli -- accept --task <task-id>
-npm run cli -- reject --task <task-id> --reason "the test output is missing"
-```
+If the app is not installed yet, submissions wait. Installing it opens pull requests for everything waiting.
 
-4. In the repository settings, under Actions → General → Workflow permissions, tick "Allow GitHub Actions to create and approve pull requests". Without it the workflow cannot open the pull request.
-5. `.github/workflows/volunteer-apply.yml` runs on a schedule or when you start it by hand. It refuses any patch that touches `.github/`, runs your `TEST_COMMAND` and only opens a pull request if the tests pass. Because GitHub does not start `pull_request` workflows for pull requests opened with `GITHUB_TOKEN`, it then starts your test workflow on the branch by hand, so the checks still show on the pull request. It downloads an accepted patch for this project that does not yet have a pull request URL, applies it on a branch, and opens the pull request with `GITHUB_TOKEN`. The broker still cannot push.
-6. Record the pull request so the public page links to it:
-
-```bash
-npm run cli -- record-pr --task <task-id> --pr https://github.com/you/project/pull/1
-```
-
-Accepting a task is what unblocks tasks that `dependsOn` it, and what counts for the donor's public impact.
+Projects that cannot install an app can still use the older route: `templates/project-starter/.github/workflows/volunteer-apply.yml` opens pull requests from your own Action after an admin accepts the diff.

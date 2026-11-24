@@ -108,6 +108,21 @@ CREATE TABLE IF NOT EXISTS work_sessions (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS github_app (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  app_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  private_key_sealed TEXT NOT NULL,
+  webhook_secret_sealed TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS setup_codes (
+  code_hash TEXT PRIMARY KEY,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_claim ON tasks (state, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_sessions_donor ON work_sessions (donor_id, status);
 CREATE INDEX IF NOT EXISTS idx_deps_parent ON task_dependencies (depends_on_id);

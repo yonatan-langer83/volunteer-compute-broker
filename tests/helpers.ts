@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Broker } from '../src/broker.js'
+import { Broker, type PullRequestOpener } from '../src/broker.js'
 import { sizeForCost } from '../src/task-size.js'
 import { loadMasterKey } from '../src/crypto.js'
 import { createFakeRegistry, type FakeHooks } from '../src/fake-provider.js'
@@ -84,9 +84,11 @@ export function setupBroker(options?: {
   maxAttempts?: number
   providers?: ProviderRegistry
   hooks?: Partial<Record<ProviderId, FakeHooks>>
+  pullRequests?: PullRequestOpener
+  store?: SqliteStore
 }): { broker: Broker; store: SqliteStore; dbPath: string; logs: string[] } {
   const dbPath = tempDbPath()
-  const store = openSqliteStore(dbPath, { maxAttempts: options?.maxAttempts ?? 3 })
+  const store = options?.store ?? openSqliteStore(dbPath, { maxAttempts: options?.maxAttempts ?? 3 })
   const logs: string[] = []
   const logger: Logger = {
     info(message) {
@@ -103,6 +105,7 @@ export function setupBroker(options?: {
     ...(options?.now ? { now: options.now } : {}),
     leaseMs: options?.leaseMs ?? 60_000,
     logger,
+    ...(options?.pullRequests ? { pullRequests: options.pullRequests } : {}),
   })
   return { broker, store, dbPath, logs }
 }

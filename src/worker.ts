@@ -6,6 +6,7 @@ import { Broker } from './broker.js'
 import { loadMasterKey } from './crypto.js'
 import { D1Sql } from './d1-sql.js'
 import { createFakeRegistry } from './fake-provider.js'
+import { createPullRequestOpener, handleGithubWebhook, handleSetupCallback, handleSetupStart } from './github-routes.js'
 import { createMcpServer } from './mcp-tools.js'
 import { loadPublicBoard, renderPublicHtml } from './public-board.js'
 import { SqliteStore } from './sqlite-store.js'
@@ -30,7 +31,18 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
     if (request.method === 'GET' && isPublicPath(url.pathname)) return servePublic(env, url.pathname)
-    if (url.pathname !== '/mcp' && !url.pathname.startsWith('/admin')) {
+    if (request.method === 'GET' && (url.pathname === '/setup/github' || url.pathname === '/setup/github/callback')) {
+      const store = new SqliteStore(new D1Sql(env.DB))
+      try {
+        await store.prepare()
+        return url.pathname === '/setup/github'
+          ? await handleSetupStart(store, url, Date.now())
+          : await handleSetupCallback(store, loadMasterKey(env.BROKER_MASTER_KEY), url, Date.now())
+      } finally {
+        await store.close()
+      }
+    }
+    if (url.pathname !== '/mcp' && !url.pathname.startsWith('/admin') && url.pathname !== '/github/webhook') {
       return Response.json({ error: 'not_found' }, { status: 404 })
     }
     const id = env.BROKER.idFromName('broker')
@@ -40,6 +52,7 @@ export default {
 
 export class BrokerObject extends DurableObject<Env> {
   private cached: Broker | null = null
+  private store: SqliteStore | null = null
   // D1 calls are outside I/O, so a Durable Object can interleave two requests
   // while either awaits D1. This queue runs broker requests strictly one at a
   // time, which is what the claim and budget logic assumes.
@@ -65,15 +78,21 @@ export class BrokerObject extends DurableObject<Env> {
     const url = new URL(request.url)
     if (url.pathname === '/mcp') return handleMcp(broker, request)
     if (url.pathname.startsWith('/admin')) return handleAdmin(broker, request, this.env.ADMIN_TOKEN ?? '')
+    if (url.pathname === '/github/webhook' && request.method === 'POST') {
+      return handleGithubWebhook(broker, this.store!, loadMasterKey(this.env.BROKER_MASTER_KEY), request)
+    }
     return Response.json({ error: 'not_found' }, { status: 404 })
   }
 
   private broker(): Broker {
     if (this.cached) return this.cached
     const store = new SqliteStore(new D1Sql(this.env.DB))
+    this.store = store
+    const masterKey = loadMasterKey(this.env.BROKER_MASTER_KEY)
     this.cached = new Broker({
       store,
-      masterKey: loadMasterKey(this.env.BROKER_MASTER_KEY),
+      masterKey,
+      pullRequests: createPullRequestOpener(store, masterKey),
       providers: createFakeRegistry(),
       logger: {
         info() {},

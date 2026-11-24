@@ -664,6 +664,45 @@ export class SqliteStore {
     })
   }
 
+  async getGithubAppRow() {
+    await this.ready
+    return await this.sql.get(
+      `SELECT app_id, slug, private_key_sealed, webhook_secret_sealed FROM github_app WHERE id = 1`,
+      [],
+    ) as { app_id: string; slug: string; private_key_sealed: string; webhook_secret_sealed: string } | undefined
+  }
+
+  async saveGithubAppRow(row: { appId: string; slug: string; privateKeySealed: string; webhookSecretSealed: string }, now: number) {
+    await this.ready
+    await this.sql.run(
+      `INSERT INTO github_app (id, app_id, slug, private_key_sealed, webhook_secret_sealed, created_at) VALUES (1, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET app_id = excluded.app_id, slug = excluded.slug,
+         private_key_sealed = excluded.private_key_sealed, webhook_secret_sealed = excluded.webhook_secret_sealed`,
+      [row.appId, row.slug, row.privateKeySealed, row.webhookSecretSealed, now],
+    )
+  }
+
+  async insertSetupCode(codeHash: string, expiresAt: number) {
+    await this.ready
+    await this.sql.run(`INSERT INTO setup_codes (code_hash, expires_at, used_at) VALUES (?, ?, NULL)`, [codeHash, expiresAt])
+  }
+
+  async setupCodeValid(codeHash: string, now: number): Promise<boolean> {
+    await this.ready
+    const row = await this.sql.get(`SELECT expires_at, used_at FROM setup_codes WHERE code_hash = ?`, [codeHash]) as
+      { expires_at: number; used_at: number | null } | undefined
+    return !!row && row.used_at === null && row.expires_at > now
+  }
+
+  async useSetupCode(codeHash: string, now: number): Promise<boolean> {
+    await this.ready
+    const changed = await this.sql.run(
+      `UPDATE setup_codes SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?`,
+      [now, codeHash, now],
+    )
+    return changed === 1
+  }
+
   async prepare() {
     await this.ready
   }

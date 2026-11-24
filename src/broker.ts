@@ -40,6 +40,18 @@ const MCP_LEASE_MS: Record<string, number> = {
   large: 180 * 60 * 1000,
 }
 
+export type PullRequestOpener = {
+  open(input: {
+    project: ProjectRecord
+    taskId: string
+    localId: string
+    title: string
+    volunteer: string
+    summary: string
+    patch: string
+  }): Promise<string | null>
+}
+
 export function mcpLeaseMs(size: string): number {
   return MCP_LEASE_MS[size] ?? 45 * 60 * 1000
 }
@@ -59,6 +71,7 @@ export class Broker {
   private readonly providers: ProviderRegistry
   private readonly now: () => number
   private readonly leaseMs: number
+  private readonly pullRequests: PullRequestOpener | null
   private readonly logger: Logger
 
   constructor(options: {
@@ -68,7 +81,9 @@ export class Broker {
     now?: () => number
     leaseMs?: number
     logger?: Logger
+    pullRequests?: PullRequestOpener
   }) {
+    this.pullRequests = options.pullRequests ?? null
     this.store = options.store
     this.masterKey = options.masterKey
     this.providers = options.providers
@@ -672,7 +687,60 @@ export class Broker {
     if (patch && patch.length > 100_000) return { ok: false, reason: 'patch_too_large' }
     const result = await this.store.submit(taskId, donorId, { summary, url: prUrl, patch }, this.now())
     if (result.ok) await this.store.completeSessionTask(donorId, this.now())
+    if (result.ok && patch && this.pullRequests) {
+      const opened = await this.openPullRequest(taskId, donorId, summary, patch)
+      return { ...result, pullRequest: opened }
+    }
     return result
+  }
+
+  // Turns a submitted diff into a pull request on the project's repo. Failure
+  // leaves the submission in review, where an admin can still accept it.
+  private async openPullRequest(taskId: string, donorId: string, summary: string, patch: string) {
+    try {
+      const task = await this.store.getTask(taskId)
+      const project = task ? await this.store.getProject(task.projectId) : null
+      const donor = await this.store.getDonor(donorId)
+      if (!task || !project || !donor) return null
+      const url = await this.pullRequests!.open({
+        project, taskId, localId: task.localId, title: task.title,
+        volunteer: donor.handle || donor.name, summary, patch,
+      })
+      if (url) await this.store.recordResultUrl(taskId, url)
+      return url
+    } catch (error) {
+      this.logger.error(`opening a pull request for ${taskId} failed: ${error instanceof Error ? error.message : String(error)}`)
+      return null
+    }
+  }
+
+  // The app was installed on a repository: open pull requests for submissions
+  // there that are waiting for review and have none yet.
+  async openPendingPullRequests(repository: string) {
+    const opened: string[] = []
+    for (const project of await this.store.listProjects()) {
+      const repo = project.github?.match(/github\.com\/([^/]+\/[^/#?]+?)(?:\.git)?\/?$/)?.[1]
+      if (!repo || repo.toLowerCase() !== repository.toLowerCase()) continue
+      for (const task of await this.store.listTasks(project.id)) {
+        if (task.state !== 'review' || !task.submissionPatch || task.submissionUrl || !task.donorId) continue
+        const url = await this.openPullRequest(task.id, task.donorId, task.submissionSummary ?? '', task.submissionPatch)
+        if (url) opened.push(url)
+      }
+    }
+    return opened
+  }
+
+  // A pull request the broker opened was merged or closed on GitHub.
+  async pullRequestClosed(input: { taskId: string; merged: boolean; repository: string }) {
+    const task = await this.store.getTask(input.taskId)
+    if (!task) return { ok: false as const, reason: 'not_found' }
+    const project = await this.store.getProject(task.projectId)
+    const repo = project?.github?.match(/github\.com\/([^/]+\/[^/#?]+?)(?:\.git)?\/?$/)?.[1]
+    if (!repo || repo.toLowerCase() !== input.repository.toLowerCase()) return { ok: false as const, reason: 'wrong_repository' }
+    if (task.state !== 'review') return { ok: false as const, reason: 'not_review' }
+    return input.merged
+      ? this.acceptSubmission(input.taskId)
+      : this.rejectSubmission(input.taskId, 'The maintainer closed the pull request without merging it.')
   }
 
   async acceptSubmission(taskId: string) {

@@ -64,7 +64,7 @@ Recommendation: talk to ComputeForGood and Good First Token before building much
 6. Create a second test project from `templates/project-starter` and check work is never assigned twice across both.
 
 ### Before inviting a real organization
-- Let maintainers accept work themselves: accept when the PR is merged (GitHub webhook or the apply workflow reporting back), instead of the broker admin by hand.
+- ~~Let maintainers accept work themselves~~ Done: the GitHub App opens a PR per submission; merge = accept, close = back to the pool.
 - Self-serve volunteer sign-up (email or passkey), token revocation, per-token rate limits.
 - Volunteer guide with the safety and terms points above, and "chat apps: non-code tasks only".
 - Show the join and connect guides on the public site, and remove the `example.org` placeholder.
