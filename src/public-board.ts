@@ -34,13 +34,18 @@ export type PublicBoard = {
 
 export async function loadPublicBoard(store: SqliteStore): Promise<PublicBoard> {
   await store.prepare()
-  const projects = await store.listProjects()
-  const donors = await store.listDonors()
+  const [projects, donors, allTasks] = await Promise.all([store.listProjects(), store.listDonors(), store.listAllTasks()])
+  const tasksByProject = new Map<string, typeof allTasks>()
+  for (const task of allTasks) {
+    const list = tasksByProject.get(task.projectId) ?? []
+    list.push(task)
+    tasksByProject.set(task.projectId, list)
+  }
   const handles = new Map(donors.map((donor) => [donor.id, donor.handle]))
   const helped = new Map<string, { tasks: number; projects: Set<string> }>()
   const listed: PublicProject[] = []
   for (const project of projects) {
-    const tasks = await store.listTasks(project.id)
+    const tasks = tasksByProject.get(project.id) ?? []
     const publicTasks = tasks.map((task) => {
       const handle = task.donorId ? handles.get(task.donorId) ?? null : null
       const done = task.state === 'done'

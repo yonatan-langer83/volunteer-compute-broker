@@ -70,8 +70,26 @@ async function withStore<T>(env: Env, run: (store: SqliteStore) => Promise<T>): 
   }
 }
 
+// Public pages change only when the board changes. Keep a copy at the edge
+// for a minute so most visits skip the database entirely.
+async function cachedPage(request: Request, ctx: { waitUntil?(p: Promise<unknown>): void } | undefined, render: () => Promise<Response>): Promise<Response> {
+  const cache = (globalThis as { caches?: { default?: Cache } }).caches?.default
+  if (!cache || request.method !== 'GET') return render()
+  const key = new Request(new URL(request.url).toString(), { method: 'GET' })
+  const hit = await cache.match(key)
+  if (hit) return hit
+  const response = await render()
+  const control = response.headers.get('cache-control') ?? ''
+  if (response.status === 200 && control.includes('public') && !response.headers.has('set-cookie')) {
+    const put = cache.put(key, response.clone())
+    if (ctx?.waitUntil) ctx.waitUntil(put)
+    else await put
+  }
+  return response
+}
+
 const siteHandler = {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: { waitUntil?(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/authorize') {
       return withStore(env, (store) => handleAuthorize(request, {
@@ -106,7 +124,7 @@ const siteHandler = {
       (url.pathname === '/volunteer/join' && request.method === 'POST')
     if (!toBroker) {
       if (request.method !== 'GET' && request.method !== 'HEAD') return Response.json({ error: 'not_found' }, { status: 404 })
-      return withStore(env, async (store) => (await handleSiteGet(siteDeps(env, store), url)) ?? notFoundPage())
+      return cachedPage(request, ctx, () => withStore(env, async (store) => (await handleSiteGet(siteDeps(env, store), url)) ?? notFoundPage()))
     }
     const id = env.BROKER.idFromName('broker')
     return env.BROKER.get(id).fetch(stripInternal(request))

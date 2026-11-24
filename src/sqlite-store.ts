@@ -319,6 +319,12 @@ export class SqliteStore {
     return row ? taskFromRow(row) : null
   }
 
+  async listAllTasks() {
+    await this.ready
+    const rows = await this.sql.all(`SELECT ${TASK_COLUMNS} FROM tasks ORDER BY created_at, local_id`, []) as unknown as TaskRow[]
+    return rows.map(taskFromRow)
+  }
+
   async listTasks(projectId: string) {
     const rows = await this.sql.all(`SELECT ${TASK_COLUMNS} FROM tasks WHERE project_id = ? ORDER BY created_at, local_id`, [projectId]) as unknown as TaskRow[]
     return rows.map(taskFromRow)
