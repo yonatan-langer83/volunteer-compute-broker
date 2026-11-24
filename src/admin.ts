@@ -59,6 +59,9 @@ export async function handleAdmin(broker: Broker, request: Request, adminToken: 
           donorId: task.donorId,
           providerOverride: task.providerOverride,
           estimatedCostUsd: task.estimatedCostUsd,
+          submissionSummary: task.submissionSummary ?? null,
+          submissionUrl: task.submissionUrl ?? null,
+          submissionPatch: task.submissionPatch ?? null,
         })),
       })
     }

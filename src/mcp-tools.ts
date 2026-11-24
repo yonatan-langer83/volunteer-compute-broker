@@ -74,6 +74,16 @@ export function createMcpServer(broker: Broker, donorId: () => string): McpServe
   )
 
   server.registerTool(
+    'keep_working',
+    {
+      description:
+        'Extend your hold on the task you are working on. A claim lasts 45 minutes for small, 90 for medium and 180 for large tasks. Call this if you need more time, before it runs out, or the task goes back to the pool and your submission will be refused.',
+      inputSchema: { task_id: z.string() },
+    },
+    async ({ task_id }) => runTool(() => broker.keepWorking(donorId(), task_id)),
+  )
+
+  server.registerTool(
     'release_task',
     {
       description:

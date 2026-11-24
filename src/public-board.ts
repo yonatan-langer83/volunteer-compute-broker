@@ -59,8 +59,10 @@ export async function loadPublicBoard(store: SqliteStore): Promise<PublicBoard> 
         safetyStatus: task.safetyStatus,
         doneAt: done ? new Date(task.updatedAt).toISOString() : null,
         donorHandle: done ? handle : null,
-        prUrl: task.submissionUrl,
-        patchPath: task.submissionPatch ? `/public/tasks/${encodeURIComponent(task.id)}/patch` : null,
+        // Only accepted work is public. A pending submission is unreviewed and
+        // could contain anything, so neither its link nor its diff is shown.
+        prUrl: done ? task.submissionUrl : null,
+        patchPath: done && task.submissionPatch ? `/public/tasks/${encodeURIComponent(task.id)}/patch` : null,
       }
     })
     listed.push({

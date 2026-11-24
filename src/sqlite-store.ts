@@ -433,6 +433,14 @@ export class SqliteStore {
     })
   }
 
+  async extendLease(taskId: string, donorId: string, leaseUntil: number, now: number): Promise<boolean> {
+    const changed = await this.sql.run(
+      `UPDATE tasks SET lease_until = ? WHERE id = ? AND donor_id = ? AND state IN ('claimed', 'running') AND lease_until IS NOT NULL AND lease_until > ?`,
+      [leaseUntil, taskId, donorId, now],
+    )
+    return changed === 1
+  }
+
   async expireLeases(now: number) {
     return this.transaction(async () => {
       await this.rollLocked(now)

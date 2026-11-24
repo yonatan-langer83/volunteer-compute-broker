@@ -92,7 +92,7 @@ A task above $100 is not a volunteer task. Split it. A task can also be too big 
 ## How finished work gets back
 
 1. The volunteer submits a unified diff through MCP. They can also submit a pull request URL if they already opened one themselves.
-2. You read the diff from the public page, or from `/public/tasks/<id>/patch`.
+2. You read the summary and diff with `GET /admin/tasks?project=<id>` (admin token). Submissions stay off the public page until you accept them, because they are unreviewed.
 3. You accept or reject it:
 
 ```bash
@@ -100,8 +100,9 @@ npm run cli -- accept --task <task-id>
 npm run cli -- reject --task <task-id> --reason "the test output is missing"
 ```
 
-4. `.github/workflows/volunteer-apply.yml` runs on a schedule or when you start it by hand. It downloads an accepted patch for this project that does not yet have a pull request URL, applies it on a branch, and opens the pull request with `GITHUB_TOKEN`. The broker still cannot push.
-5. Record the pull request so the public page links to it:
+4. In the repository settings, under Actions → General → Workflow permissions, tick "Allow GitHub Actions to create and approve pull requests". Without it the workflow cannot open the pull request.
+5. `.github/workflows/volunteer-apply.yml` runs on a schedule or when you start it by hand. It refuses any patch that touches `.github/`, runs your `TEST_COMMAND` and only opens a pull request if the tests pass. Because GitHub does not start `pull_request` workflows for pull requests opened with `GITHUB_TOKEN`, it then starts your test workflow on the branch by hand, so the checks still show on the pull request. It downloads an accepted patch for this project that does not yet have a pull request URL, applies it on a branch, and opens the pull request with `GITHUB_TOKEN`. The broker still cannot push.
+6. Record the pull request so the public page links to it:
 
 ```bash
 npm run cli -- record-pr --task <task-id> --pr https://github.com/you/project/pull/1

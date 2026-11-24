@@ -32,6 +32,18 @@ import {
 
 const DEFAULT_LEASE_MS = 10 * 60 * 1000
 
+// A volunteer's own AI works at chat speed, so its claim lasts longer than an
+// API-key run, scaled by task size. keep_working extends it while work goes on.
+const MCP_LEASE_MS: Record<string, number> = {
+  small: 45 * 60 * 1000,
+  medium: 90 * 60 * 1000,
+  large: 180 * 60 * 1000,
+}
+
+export function mcpLeaseMs(size: string): number {
+  return MCP_LEASE_MS[size] ?? 45 * 60 * 1000
+}
+
 const consoleLogger: Logger = {
   info(message) {
     console.log(message)
@@ -419,7 +431,8 @@ export class Broker {
       if (gate) return gate
     }
     const now = this.now()
-    const result = await this.store.claim({ donorId, taskId, now, leaseUntil: now + this.leaseMs })
+    const leaseMs = donor?.kind === 'mcp' ? mcpLeaseMs(existing.size) : this.leaseMs
+    const result = await this.store.claim({ donorId, taskId, now, leaseUntil: now + leaseMs })
     if (!result.ok) return result
     this.logger.info(`task ${taskId} claimed by donor ${donorId}`)
     return {
@@ -671,6 +684,15 @@ export class Broker {
     const result = await this.store.reject(taskId, clean, this.now())
     if (result.ok) this.logger.info(`task ${taskId} rejected`)
     return result
+  }
+
+  async keepWorking(donorId: string, taskId: string) {
+    const task = await this.store.getTask(taskId)
+    if (!task || task.donorId !== donorId) return { ok: false as const, reason: 'not_holder' }
+    const now = this.now()
+    const leaseUntil = now + mcpLeaseMs(task.size)
+    const extended = await this.store.extendLease(taskId, donorId, leaseUntil, now)
+    return extended ? { ok: true as const, leaseUntil } : { ok: false as const, reason: 'lease_expired' }
   }
 
   async release(donorId: string, taskId: string, reason?: string) {

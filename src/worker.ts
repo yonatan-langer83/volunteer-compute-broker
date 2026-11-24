@@ -40,12 +40,22 @@ export default {
 
 export class BrokerObject extends DurableObject<Env> {
   private cached: Broker | null = null
+  // D1 calls are outside I/O, so a Durable Object can interleave two requests
+  // while either awaits D1. This queue runs broker requests strictly one at a
+  // time, which is what the claim and budget logic assumes.
+  private queue: Promise<unknown> = Promise.resolve()
 
   constructor(ctx: unknown, env: Env) {
     super(ctx, env)
   }
 
   async fetch(request: Request): Promise<Response> {
+    const run = this.queue.then(() => this.handle(request))
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
+  private async handle(request: Request): Promise<Response> {
     let broker: Broker
     try {
       broker = this.broker()
@@ -87,7 +97,7 @@ async function servePublic(env: Env, pathname: string): Promise<Response> {
     if (pathname.endsWith('/patch')) {
       const id = decodeURIComponent(pathname.split('/')[3] ?? '')
       const task = await store.getTask(id)
-      if (!task?.submissionPatch) return new Response('not found\n', { status: 404 })
+      if (!task?.submissionPatch || task.state !== 'done') return new Response('not found\n', { status: 404 })
       return new Response(task.submissionPatch, { headers: { 'content-type': 'text/plain; charset=utf-8' } })
     }
     const board = await loadPublicBoard(store)

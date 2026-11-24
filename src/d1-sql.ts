@@ -12,7 +12,7 @@ type D1Like = {
   prepare(sql: string): Statement
 }
 
-// One Durable Object runs these calls one at a time. D1 has no interactive
+// One Durable Object runs these calls one at a time (worker.ts queues requests). D1 has no interactive
 // transaction, so each statement commits on its own. A crash between the task
 // update and the budget update can leave those two rows briefly apart. The
 // object still finishes one claim before it starts the next, and the claim

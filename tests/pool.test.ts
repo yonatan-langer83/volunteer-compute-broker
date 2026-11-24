@@ -94,7 +94,7 @@ tasks:
     const page = renderPublicHtml(board)
     expect(page).toContain('pantry')
     expect(page).toContain('ada')
-    expect(page).toContain('https://example.com/pantry/pull/2')
+    expect(page).not.toContain('https://example.com/pantry/pull/2')
     const hours = board.projects.find((project) => project.name === 'pantry')?.tasks.find((task) => task.localId === 'hours')
     expect(hours).toMatchObject({ state: 'done', donorHandle: 'ada' })
     expect(hours?.patchPath).toContain('/public/tasks/')
