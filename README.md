@@ -2,7 +2,9 @@
 
 This is meant for nonprofit projects and organizations getting work done through open-source development. It is transparent and helps everyone: a nonprofit that can't afford a dev team can still get big projects done by splitting them into small tasks that many donors' compute completes.
 
-A project posts small tasks. A donor contributes an AI provider API key. One run always uses that one key from start to finish. The broker gives each task to one donor and runs it. The code is MIT licensed.
+A project posts small tasks. A volunteer connects their own AI app (Claude, Gemini CLI, Grok and others) over MCP, claims one task, does it on their own plan and hands back a patch or a pull request. The broker gives each task to one volunteer, keeps the order, and lists accepted work publicly. The code is MIT licensed.
+
+> **The donated-API-key route is local and experimental only.** OpenAI's business terms forbid transferring API keys to a third party, and Anthropic's terms forbid sharing an API key. The hosted broker therefore runs MCP only (the Worker uses the fake provider registry and exposes no key registration). Do not collect real donor keys. See `ROADMAP.md`.
 
 The project writes the instructions. The donor does not need to be a programmer. This repository is the service in the middle: registration, eligibility, assignment, and execution. It does not open pull requests or talk to GitHub. A donor who brings an AI app asks for a number of tasks of one size and receives them one at a time. Finished work is public at `/` and `/public.json` on the worker, under the donor's pseudonym.
 

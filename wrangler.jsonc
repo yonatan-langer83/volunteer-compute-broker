@@ -16,7 +16,7 @@
     {
       "binding": "DB",
       "database_name": "volunteer-broker",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "85a5132d-a9ad-40e3-b13c-b7ce25055ef0",
       "migrations_dir": "migrations"
     }
   ],
