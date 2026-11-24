@@ -61,7 +61,7 @@ describe('worker fetch', () => {
     expect(boardText).toContain('harbor-pantry')
     expect(boardText).not.toContain('vbk_')
     expect(registered.name).toBe('harbor-pantry')
-    expect(tasks).toHaveLength(5)
+    expect(tasks).toHaveLength(6)
     const locked = tasks.find((task) => task.localId === 'fix-overnight-hours')
     if (!locked) throw new Error('missing locked task')
 

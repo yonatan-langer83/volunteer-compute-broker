@@ -44,12 +44,14 @@ export type ProjectRecord = {
   repoPath: string
   agentsMd: string | null
   registeredAt: number
+  checks: { setup?: string; run: string } | null
 }
 
 export type TaskRecord = {
   id: string
   projectId: string
   localId: string
+  kind: 'code' | 'writing'
   title: string
   goal: string
   instructions: string

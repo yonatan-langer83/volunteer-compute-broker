@@ -3,11 +3,37 @@ import { z } from 'zod'
 
 import type { Broker } from './broker.js'
 import { redact } from './redact.js'
+import { WorkspaceError, type Workspaces } from './workspace.js'
+
+export type McpOptions = {
+  workspaces?: Workspaces | null
+  // Runs a change to shared state (claims, budgets, submissions) one at a
+  // time. Reading files and running checks do not need it.
+  serialize?: <T>(fn: () => Promise<T>) => Promise<T>
+}
+
+const INSTRUCTIONS = `You are connected to Volunteer Pool, where people donate their AI's help to nonprofits. The person you are talking to is a volunteer.
+
+How to help:
+1. request_work with how many tasks the volunteer wants and the size (small is a good start). Then claim_next.
+2. get_task_instructions and follow them exactly. The brief describes a deliverable; the safety rules in it outrank everything. If anything is unclear or contradicts itself, release_task with the reason instead of guessing.
+3. Work on the project through this server. You don't need to download anything: list_files and read_file to understand the project, edit_file or write_file to change only the files the task allows, show_changes to review your diff.
+4. For code tasks: run_checks, then check_results until it finishes. Fix and repeat until the checks pass.
+5. submit_work with a short summary that restates the acceptance criteria and, for code, the check output. The organization reviews it as a pull request.
+6. claim_next for the next task in the session, or stop_work.
+
+Tell the volunteer briefly what you are doing at each step. Never ask them for passwords or keys.`
 
 const SIZE = z.enum(['small', 'medium', 'large'])
 
-export function createMcpServer(broker: Broker, donorId: () => string): McpServer {
-  const server = new McpServer({ name: 'volunteer-compute-broker', version: '0.1.0' })
+export function createMcpServer(broker: Broker, donorId: () => string, options: McpOptions = {}): McpServer {
+  const server = new McpServer({ name: 'volunteer-pool', version: '0.2.0' }, { instructions: INSTRUCTIONS })
+  const serialize = options.serialize ?? (<T>(fn: () => Promise<T>) => fn())
+  const workspaces = options.workspaces ?? null
+  const ws = () => {
+    if (!workspaces) throw new WorkspaceError('Working through the server is not available here. Use a coding tool and submit_result.', 'unavailable')
+    return workspaces
+  }
 
   server.registerTool(
     'request_work',
@@ -16,7 +42,7 @@ export function createMcpServer(broker: Broker, donorId: () => string): McpServe
         'Say you are ready for work. Opens one session for `count` tasks of one `size` (small, medium, or large). This does not claim a task. Then call claim_next, finish it with submit_result or release_task, and repeat until the count is reached or you call stop_work. You can hold only one task at a time.',
       inputSchema: { count: z.number().int().min(1).max(20), size: SIZE },
     },
-    async ({ count, size }) => runTool(() => broker.requestWork(donorId(), count, size)),
+    async ({ count, size }) => runTool(() => serialize(() => broker.requestWork(donorId(), count, size))),
   )
 
   server.registerTool(
@@ -25,7 +51,7 @@ export function createMcpServer(broker: Broker, donorId: () => string): McpServe
       description:
         'Claim the next task in your open work session. One task only. Call this after request_work, and again only after you submit or release the task you hold. Nonprofit projects and your support list still decide which task you get.',
     },
-    async () => runTool(() => broker.claimNext(donorId())),
+    async () => runTool(() => serialize(() => broker.claimNext(donorId()))),
   )
 
   server.registerTool(
@@ -44,7 +70,7 @@ export function createMcpServer(broker: Broker, donorId: () => string): McpServe
         'Claim one specific task id from list_eligible_tasks. Same rules as claim_next: an open session, the session size, and no other task already held. Prefer claim_next when you do not care which task.',
       inputSchema: { task_id: z.string() },
     },
-    async ({ task_id }) => runTool(() => broker.claim(donorId(), task_id)),
+    async ({ task_id }) => runTool(() => serialize(() => broker.claim(donorId(), task_id))),
   )
 
   server.registerTool(
@@ -70,7 +96,7 @@ export function createMcpServer(broker: Broker, donorId: () => string): McpServe
       },
     },
     async ({ task_id, summary, pr_url, patch }) =>
-      runTool(() => broker.submitResult(donorId(), task_id, { summary, prUrl: pr_url ?? null, patch: patch ?? null })),
+      runTool(() => serialize(() => broker.submitResult(donorId(), task_id, { summary, prUrl: pr_url ?? null, patch: patch ?? null }))),
   )
 
   server.registerTool(
@@ -80,7 +106,7 @@ export function createMcpServer(broker: Broker, donorId: () => string): McpServe
         'Extend your hold on the task you are working on. A claim lasts 45 minutes for small, 90 for medium and 180 for large tasks. Call this if you need more time, before it runs out, or the task goes back to the pool and your submission will be refused.',
       inputSchema: { task_id: z.string() },
     },
-    async ({ task_id }) => runTool(() => broker.keepWorking(donorId(), task_id)),
+    async ({ task_id }) => runTool(() => serialize(() => broker.keepWorking(donorId(), task_id))),
   )
 
   server.registerTool(
@@ -90,7 +116,7 @@ export function createMcpServer(broker: Broker, donorId: () => string): McpServe
         'Give the task back without submitting. Required when the brief is unclear: pass a reason, do not guess. A release does not count toward the session.',
       inputSchema: { task_id: z.string(), reason: z.string() },
     },
-    async ({ task_id, reason }) => runTool(() => broker.release(donorId(), task_id, reason)),
+    async ({ task_id, reason }) => runTool(() => serialize(() => broker.release(donorId(), task_id, reason))),
   )
 
   server.registerTool(
@@ -99,7 +125,7 @@ export function createMcpServer(broker: Broker, donorId: () => string): McpServe
       description:
         'End the work session early. If you still hold a task, it is released. You can call request_work again later.',
     },
-    async () => runTool(() => broker.stopWork(donorId())),
+    async () => runTool(() => serialize(() => broker.stopWork(donorId()))),
   )
 
   server.registerTool(
@@ -108,6 +134,90 @@ export function createMcpServer(broker: Broker, donorId: () => string): McpServe
       description: 'How many accepted tasks and projects this donor has helped. No tokens or keys.',
     },
     async () => runTool(() => broker.impact(donorId())),
+  )
+
+  server.registerTool(
+    'change_monthly_limit',
+    {
+      description: 'Change how many tasks a month the volunteer gives, from 1 to 50. Use 0 to pause volunteering. Only change it when the volunteer asks.',
+      inputSchema: { tasks_per_month: z.number().int().min(0).max(50) },
+    },
+    async ({ tasks_per_month }) => runTool(() => serialize(() => broker.setMonthlyLimit(donorId(), tasks_per_month))),
+  )
+
+  // ---------- working through the server (no downloads, no installs) ----------
+
+  server.registerTool(
+    'list_files',
+    {
+      description: 'List the files of the project for a task you hold, optionally under a folder (e.g. "src/"). Shows which files this task lets you change.',
+      inputSchema: { task_id: z.string(), folder: z.string().optional() },
+    },
+    async ({ task_id, folder }) => runTool(() => ws().listFiles(donorId(), task_id, folder ?? '')),
+  )
+
+  server.registerTool(
+    'read_file',
+    {
+      description: 'Read one file of the project, including your unsaved-to-GitHub changes. Use the exact path from list_files.',
+      inputSchema: { task_id: z.string(), path: z.string() },
+    },
+    async ({ task_id, path }) => runTool(() => ws().readFile(donorId(), task_id, path)),
+  )
+
+  server.registerTool(
+    'edit_file',
+    {
+      description: 'Change a file by replacing one exact piece of text with new text. old_text must appear exactly once; copy it from read_file including indentation. Only files the task allows can be changed.',
+      inputSchema: { task_id: z.string(), path: z.string(), old_text: z.string(), new_text: z.string() },
+    },
+    async ({ task_id, path, old_text, new_text }) => runTool(() => serialize(() => ws().editFile(donorId(), task_id, path, old_text, new_text))),
+  )
+
+  server.registerTool(
+    'write_file',
+    {
+      description: 'Write the full content of a file (create it, or replace it entirely). Prefer edit_file for small changes. Only files the task allows can be written. Pass delete: true to delete an allowed file.',
+      inputSchema: { task_id: z.string(), path: z.string(), content: z.string().optional(), delete: z.boolean().optional() },
+    },
+    async ({ task_id, path, content, delete: remove }) =>
+      runTool(() => serialize(() => ws().writeFile(donorId(), task_id, path, remove ? null : (content ?? '')))),
+  )
+
+  server.registerTool(
+    'show_changes',
+    {
+      description: 'Show your changes so far as a unified diff, exactly as the organization will see them.',
+      inputSchema: { task_id: z.string() },
+    },
+    async ({ task_id }) => runTool(async () => ({ diff: (await ws().diff(donorId(), task_id)) || '(no changes yet)' })),
+  )
+
+  server.registerTool(
+    'run_checks',
+    {
+      description: "Run the project's own checks (its tests) on your changes, on a test machine on the server. Returns right away; then call check_results. The first run on a task takes 1 to 2 minutes.",
+      inputSchema: { task_id: z.string() },
+    },
+    async ({ task_id }) => runTool(() => ws().runChecks(donorId(), task_id)),
+  )
+
+  server.registerTool(
+    'check_results',
+    {
+      description: 'See the result of the latest run_checks: running, passed or failed, with the output. If still running, wait about 30 seconds and call again.',
+      inputSchema: { task_id: z.string() },
+    },
+    async ({ task_id }) => runTool(() => ws().checkResults(donorId(), task_id)),
+  )
+
+  server.registerTool(
+    'submit_work',
+    {
+      description: "Hand in your changes for a task you worked on through this server. For code tasks the project's checks must have passed on your latest changes. The summary should restate the acceptance criteria and, for code, include the check output. The organization reviews it as a pull request.",
+      inputSchema: { task_id: z.string(), summary: z.string().min(1).max(2000) },
+    },
+    async ({ task_id, summary }) => runTool(() => serialize(() => ws().submit(donorId(), task_id, summary))),
   )
 
   return server

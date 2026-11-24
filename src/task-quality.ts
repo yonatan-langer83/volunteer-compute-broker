@@ -90,8 +90,8 @@ function lintDeliverable(deliverable: string, label: string, errors: string[]): 
     errors.push(`${label}.deliverable must say what to hand back and in what form`)
     return
   }
-  if (!/patch|diff|pull request|\bpr\b/i.test(deliverable)) {
-    errors.push(`${label}.deliverable must name the form, such as a unified diff or a pull request URL`)
+  if (!/patch|diff|pull request|\bpr\b|\bfile\b|markdown|\btext\b|document/i.test(deliverable)) {
+    errors.push(`${label}.deliverable must name the form, such as a unified diff, a pull request URL or a new Markdown file`)
   }
 }
 

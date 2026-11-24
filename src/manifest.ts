@@ -6,8 +6,16 @@ import { lintTask } from './task-quality.js'
 import { isTaskSize, type TaskSize } from './task-size.js'
 import { isProviderId, type ProviderId } from './types.js'
 
+export type TaskKind = 'code' | 'writing'
+
+// How the broker runs a project's checks on a volunteer's work: shell
+// commands run from the repository root in a fresh Linux test machine with
+// Python 3, Node.js and git. setup runs first (install dependencies), then run.
+export type ProjectChecks = { setup?: string; run: string }
+
 export type ManifestTask = {
   id: string
+  kind: TaskKind
   title: string
   goal: string
   instructions: string
@@ -24,7 +32,7 @@ export type ManifestTask = {
 
 export type Manifest = {
   schemaVersion: 1
-  project: { name: string; github?: string; nonprofit: boolean; orgUrl?: string }
+  project: { name: string; github?: string; nonprofit: boolean; orgUrl?: string; checks?: ProjectChecks }
   tasks: ManifestTask[]
 }
 
@@ -88,6 +96,17 @@ export function validateManifest(document: unknown): Manifest {
       orgUrl = project.orgUrl
     }
   }
+  let checks: ProjectChecks | undefined
+  if (project && project.checks != null) {
+    const raw = project.checks
+    const run = isRecord(raw) ? readText(raw.run) : ''
+    const setup = isRecord(raw) ? readText(raw.setup) : ''
+    if (!run || run.length > 2000 || setup.length > 2000) {
+      errors.push('project.checks must be a mapping with run (and optional setup) shell commands')
+    } else {
+      checks = { run, ...(setup ? { setup } : {}) }
+    }
+  }
   if (!Array.isArray(document.tasks) || document.tasks.length === 0) {
     errors.push('tasks must be a non-empty list')
   }
@@ -115,7 +134,7 @@ export function validateManifest(document: unknown): Manifest {
   if (errors.length > 0) throw new ManifestError(errors.join('\n'))
   return {
     schemaVersion: 1,
-    project: { name, nonprofit, ...(github ? { github } : {}), ...(orgUrl ? { orgUrl } : {}) },
+    project: { name, nonprofit, ...(github ? { github } : {}), ...(orgUrl ? { orgUrl } : {}), ...(checks ? { checks } : {}) },
     tasks,
   }
 }
@@ -177,7 +196,14 @@ function parseTask(entry: unknown, index: number, errors: string[]): ManifestTas
   if (instructions.length === 0 || instructions.length > 20_000) errors.push(`${label}.instructions must be the steps`)
   const acceptance = typeof entry.acceptance === 'string' ? entry.acceptance.trim() : ''
   if (acceptance.length === 0 || acceptance.length > 20_000) errors.push(`${label}.acceptance is required`)
-  const tests = readText(entry.tests)
+  let kind: TaskKind = 'code'
+  if (entry.kind != null) {
+    if (entry.kind === 'code' || entry.kind === 'writing') kind = entry.kind
+    else errors.push(`${label}.kind must be code or writing`)
+  }
+  // Writing tasks (docs, translations, research notes) may have no commands:
+  // the organization checks them by reading.
+  const tests = readText(entry.tests) || (kind === 'writing' ? 'No commands: the organization reads the result against the acceptance criteria.' : '')
   if (!tests) errors.push(`${label}.tests must list the exact commands to run`)
   const scopeDo = readList(entry.do)
   if (!scopeDo) errors.push(`${label}.do must be a list of what the volunteer may touch`)
@@ -242,6 +268,7 @@ function parseTask(entry: unknown, index: number, errors: string[]): ManifestTas
   if (!id || !size || !tests || !scopeDo || !scopeDont) return null
   return {
     id,
+    kind,
     title,
     goal,
     instructions,

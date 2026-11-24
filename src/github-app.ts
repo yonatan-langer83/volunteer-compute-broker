@@ -12,6 +12,8 @@ export type AppCredentials = {
 }
 
 const API = 'https://api.github.com'
+const TOKEN_CACHE = new Map<string, { token: string; expires: number }>()
+const TREE_CACHE = new Map<string, { path: string; size: number }[]>()
 const enc = new TextEncoder()
 
 // ---------- keys and tokens ----------
@@ -182,10 +184,66 @@ export class GitHubApp {
   }
 
   async installationToken(owner: string, repo: string): Promise<string> {
+    const key = `${this.creds.appId}:${owner}/${repo}`.toLowerCase()
+    const cached = TOKEN_CACHE.get(key)
+    if (cached && cached.expires > this.now() + 5 * 60 * 1000) return cached.token
     const jwt = await appJwt(this.creds.appId, this.creds.privateKeyPem, this.now())
     const install = await this.call<{ id: number }>(jwt, 'GET', `/repos/${owner}/${repo}/installation`, undefined, 'Bearer')
-    const token = await this.call<{ token: string }>(jwt, 'POST', `/app/installations/${install.id}/access_tokens`, {}, 'Bearer')
+    const token = await this.call<{ token: string; expires_at?: string }>(jwt, 'POST', `/app/installations/${install.id}/access_tokens`, {}, 'Bearer')
+    const expires = token.expires_at ? Date.parse(token.expires_at) : this.now() + 50 * 60 * 1000
+    TOKEN_CACHE.set(key, { token: token.token, expires })
     return token.token
+  }
+
+  // ---------- reading a repository for a volunteer's workspace ----------
+
+  async headSha(owner: string, repo: string): Promise<string> {
+    const token = await this.installationToken(owner, repo)
+    const info = await this.call<{ default_branch: string }>(token, 'GET', `/repos/${owner}/${repo}`)
+    const ref = await this.call<{ object: { sha: string } }>(token, 'GET', `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(info.default_branch)}`)
+    return ref.object.sha
+  }
+
+  async listFiles(owner: string, repo: string, sha: string): Promise<{ path: string; size: number }[]> {
+    const cacheKey = `${owner}/${repo}@${sha}`.toLowerCase()
+    const cached = TREE_CACHE.get(cacheKey)
+    if (cached) return cached
+    const token = await this.installationToken(owner, repo)
+    const tree = await this.call<{ tree: { path: string; type: string; size?: number }[]; truncated?: boolean }>(
+      token, 'GET', `/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`,
+    )
+    const files = tree.tree.filter((entry) => entry.type === 'blob').map((entry) => ({ path: entry.path, size: entry.size ?? 0 }))
+    if (TREE_CACHE.size > 50) TREE_CACHE.clear()
+    TREE_CACHE.set(cacheKey, files)
+    return files
+  }
+
+  async readFile(owner: string, repo: string, sha: string, path: string): Promise<string | null> {
+    const token = await this.installationToken(owner, repo)
+    const response = await this.fetcher(`${API}/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${sha}`, {
+      headers: {
+        authorization: `token ${token}`,
+        accept: 'application/vnd.github.raw+json',
+        'user-agent': 'volunteer-compute-broker',
+        'x-github-api-version': '2022-11-28',
+      },
+    })
+    if (response.status === 404) return null
+    if (!response.ok) throw new Error(`GitHub GET contents ${path} failed: ${response.status}`)
+    return await response.text()
+  }
+
+  // A short-lived download link for the repository at sha, for a test machine.
+  async tarballUrl(owner: string, repo: string, sha: string): Promise<string> {
+    const token = await this.installationToken(owner, repo)
+    const response = await this.fetcher(`${API}/repos/${owner}/${repo}/tarball/${sha}`, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: { authorization: `token ${token}`, 'user-agent': 'volunteer-compute-broker', 'x-github-api-version': '2022-11-28' },
+    })
+    const location = response.headers.get('location')
+    if (response.status >= 300 && response.status < 400 && location) return location
+    throw new Error(`GitHub tarball link failed: ${response.status}`)
   }
 
   async openVolunteerPr(input: {

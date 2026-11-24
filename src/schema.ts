@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS projects (
   nonprofit INTEGER NOT NULL DEFAULT 0,
   repo_path TEXT NOT NULL,
   agents_md TEXT,
-  registered_at INTEGER NOT NULL
+  registered_at INTEGER NOT NULL,
+  checks_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   safety_flags TEXT NOT NULL DEFAULT '[]',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'code',
   UNIQUE (project_id, local_id)
 );
 
@@ -151,6 +153,35 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   expires_at INTEGER NOT NULL
 );
 
+
+CREATE TABLE IF NOT EXISTS workspaces (
+  task_id TEXT PRIMARY KEY,
+  donor_id TEXT NOT NULL,
+  base_sha TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workspace_files (
+  task_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  content TEXT,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (task_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS check_runs (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  donor_id TEXT NOT NULL,
+  workspace_hash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'error')),
+  exit_code INTEGER,
+  output TEXT,
+  created_at INTEGER NOT NULL,
+  finished_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_check_runs_task ON check_runs(task_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_tasks_claim ON tasks (state, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_sessions_donor ON work_sessions (donor_id, status);

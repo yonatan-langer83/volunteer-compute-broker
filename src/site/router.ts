@@ -75,7 +75,7 @@ function clientKey(request: Request, now: number, salt: string): string {
   return createHash('sha256').update(`${salt}:${ip}:${day}`).digest('hex')
 }
 
-async function passesTurnstile(deps: SiteDeps, form: FormData, request: Request): Promise<boolean> {
+export async function passesTurnstile(deps: SiteDeps, form: FormData, request: Request): Promise<boolean> {
   if (!deps.turnstileSecret) return true
   const token = String(form.get('cf-turnstile-response') ?? '')
   if (!token) return false

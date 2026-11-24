@@ -110,14 +110,8 @@ export class Broker {
     return this.registerManifest({ manifest, repoPath, agentsMd })
   }
 
-  async registerManifest(input: { manifest: Manifest; repoPath: string; agentsMd: string | null }): Promise<RegisteredProject> {
-    const manifest = input.manifest
-    if (await this.store.getProjectByName(manifest.project.name)) {
-      throw new BrokerError(`project already registered: ${manifest.project.name}`, 'project_exists')
-    }
-    const now = this.now()
-    const projectId = randomUUID()
-    const tasks = manifest.tasks.map((task, index) => {
+  private buildTasks(projectId: string, manifest: Manifest, agentsMd: string | null, now: number) {
+    return manifest.tasks.map((task, index) => {
       const safetyFlags = lintInjection(
         briefText({
           title: task.title,
@@ -128,13 +122,14 @@ export class Broker {
           do: task.do,
           dont: task.dont,
           deliverable: task.deliverable,
-          agentsMd: input.agentsMd,
+          agentsMd,
         }),
       )
       return {
         id: `${projectId}:${task.id}`,
         projectId,
         localId: task.id,
+        kind: task.kind ?? 'code',
         title: task.title,
         goal: task.goal,
         instructions: task.instructions,
@@ -153,6 +148,16 @@ export class Broker {
         dependsOn: task.dependsOn.map((dependency) => `${projectId}:${dependency}`),
       }
     })
+  }
+
+  async registerManifest(input: { manifest: Manifest; repoPath: string; agentsMd: string | null }): Promise<RegisteredProject> {
+    const manifest = input.manifest
+    if (await this.store.getProjectByName(manifest.project.name)) {
+      throw new BrokerError(`project already registered: ${manifest.project.name}`, 'project_exists')
+    }
+    const now = this.now()
+    const projectId = randomUUID()
+    const tasks = this.buildTasks(projectId, manifest, input.agentsMd, now)
     await this.store.insertProject(
       {
         id: projectId,
@@ -163,6 +168,7 @@ export class Broker {
         repoPath: input.repoPath,
         agentsMd: input.agentsMd,
         registeredAt: now,
+        checks: manifest.project.checks ?? null,
       },
       tasks,
     )
@@ -179,6 +185,35 @@ export class Broker {
         safetyFlags: task.safetyFlags,
       })),
     }
+  }
+
+  // Brings a registered project in line with the task list in its repository:
+  // new tasks are added, briefs of tasks nobody holds are updated, and tasks in
+  // progress or done are left alone. Tasks are never deleted.
+  async syncManifest(input: { manifest: Manifest; agentsMd: string | null }) {
+    const project = await this.store.getProjectByName(input.manifest.project.name)
+    if (!project) throw new BrokerError(`project not registered: ${input.manifest.project.name}`, 'project_not_found')
+    await this.store.updateProjectFromManifest(project.id, {
+      github: input.manifest.project.github ?? project.github,
+      orgUrl: input.manifest.project.orgUrl ?? null,
+      nonprofit: input.manifest.project.nonprofit,
+      agentsMd: input.agentsMd,
+      checks: input.manifest.project.checks ?? null,
+    })
+    const existing = new Map((await this.store.listTasks(project.id)).map((task) => [task.id, task]))
+    const built = this.buildTasks(project.id, input.manifest, input.agentsMd, this.now())
+    const added = built.filter((task) => !existing.has(task.id)).map((task) => {
+      const ready = task.dependsOn.every((dep) => existing.get(dep)?.state === 'done')
+      return { ...task, state: task.dependsOn.length === 0 || ready ? ('open' as const) : ('blocked' as const) }
+    })
+    if (added.length) await this.store.addTasks(added)
+    let updated = 0
+    for (const task of built) {
+      const current = existing.get(task.id)
+      if (current && (current.state === 'open' || current.state === 'blocked') && await this.store.updateOpenTaskBrief(task)) updated += 1
+    }
+    this.logger.info(`project ${project.id} synced: ${added.length} added, ${updated} updated`)
+    return { project: project.name, added: added.map((t) => t.localId), updated }
   }
 
   async registerDonor(input: {
@@ -755,6 +790,20 @@ export class Broker {
     const result = await this.store.reject(taskId, clean, this.now())
     if (result.ok) this.logger.info(`task ${taskId} rejected`)
     return result
+  }
+
+  // A volunteer changes how many tasks a month they give. 0 pauses volunteering.
+  async setMonthlyLimit(donorId: string, monthly: number) {
+    if (!Number.isInteger(monthly) || monthly < 0 || monthly > 50) return { ok: false as const, reason: 'limit_out_of_range' }
+    const donor = await this.store.getDonor(donorId)
+    if (!donor || donor.kind !== 'mcp') return { ok: false as const, reason: 'not_found' }
+    await this.store.setMonthlyTaskBudget(donorId, monthly)
+    return {
+      ok: true as const,
+      monthlyLimit: monthly,
+      usedThisMonth: donor.spentTasks + donor.reservedTasks,
+      message: monthly === 0 ? 'Volunteering is paused. Set a number above 0 to start again.' : `You'll get at most ${monthly} tasks a month.`,
+    }
   }
 
   async listApplications() {

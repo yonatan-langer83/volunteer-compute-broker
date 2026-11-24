@@ -3,7 +3,7 @@
   "name": "volunteer-compute-broker",
   "main": "src/worker.ts",
   "compatibility_date": "2026-11-24",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": false,
   "preview_urls": false,
   "assets": {
@@ -28,11 +28,30 @@
       "migrations_dir": "migrations"
     }
   ],
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "da3568a541de4cb795d57ccff8312324"
+    }
+  ],
+  "containers": [
+    {
+      "class_name": "TestRunner",
+      "scheduling_policy": "durable_object"
+    }
+  ],
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
   "durable_objects": {
     "bindings": [
       {
         "name": "BROKER",
         "class_name": "BrokerObject"
+      },
+      {
+        "name": "TEST_RUNNER",
+        "class_name": "TestRunner"
       }
     ]
   },
@@ -40,6 +59,10 @@
     {
       "tag": "v1",
       "new_classes": ["BrokerObject"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["TestRunner"]
     }
   ]
 }

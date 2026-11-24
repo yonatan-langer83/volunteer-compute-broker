@@ -9,7 +9,7 @@ import { repoRoot, registerDonor, setupBroker } from './helpers.js'
 const harbor = path.join(repoRoot, 'fixtures/harbor-pantry')
 
 describe('harbor-pantry manifest', () => {
-  it('registers five nonprofit tasks and lets an MCP donor claim the provider-locked one', async () => {
+  it('registers six nonprofit tasks and lets an MCP donor claim the provider-locked one', async () => {
     const { broker, store } = setupBroker()
     const project = await broker.registerProject({
       manifestPath: path.join(harbor, 'volunteer-compute.yaml'),
@@ -17,7 +17,7 @@ describe('harbor-pantry manifest', () => {
     })
     expect(project.name).toBe('harbor-pantry')
     expect(project.nonprofit).toBe(true)
-    expect(project.tasks).toHaveLength(5)
+    expect(project.tasks).toHaveLength(6)
     const tasks = await broker.listTasks(project.id)
     const locked = tasks.find((task) => task.localId === 'fix-overnight-hours')
     const blocked = tasks.find((task) => task.localId === 'report-schedule-overlaps')
@@ -25,7 +25,7 @@ describe('harbor-pantry manifest', () => {
     expect(locked.providerOverride).toBe('anthropic')
     expect(locked.state).toBe('open')
     expect(blocked.state).toBe('blocked')
-    expect(tasks.filter((task) => task.state === 'open')).toHaveLength(4)
+    expect(tasks.filter((task) => task.state === 'open')).toHaveLength(5)
 
     const keyDonor = await registerDonor(broker, {
       name: 'key',

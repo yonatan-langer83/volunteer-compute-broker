@@ -10,6 +10,7 @@ import type { DonorRecord, ProjectRecord, ProviderId, TaskRecord, TaskState } fr
 import { isProviderId } from './types.js'
 
 type TaskRow = {
+  kind?: string | null
   id: string
   project_id: string
   local_id: string
@@ -60,6 +61,7 @@ type DonorRow = {
 }
 
 type ProjectRow = {
+  checks_json?: string | null
   id: string
   name: string
   github: string | null
@@ -71,6 +73,7 @@ type ProjectRow = {
 }
 
 export type ProjectInsert = {
+  checks?: { setup?: string; run: string } | null
   id: string
   name: string
   github: string | null
@@ -82,6 +85,7 @@ export type ProjectInsert = {
 }
 
 export type TaskInsert = {
+  kind?: 'code' | 'writing'
   id: string
   projectId: string
   localId: string
@@ -131,7 +135,7 @@ const TASK_COLUMNS = `
   scope_do, scope_dont, deliverable, size, provider_override,
   estimated_cost_usd, state, donor_id, lease_until, attempts, result,
   failure_reason, reserved_cost_usd, budget_period, submission_summary,
-  submission_url, submission_patch, safety_status, safety_flags, created_at, updated_at
+  submission_url, submission_patch, safety_status, safety_flags, created_at, updated_at, kind
 `
 
 const DONOR_COLUMNS = `
@@ -140,7 +144,7 @@ const DONOR_COLUMNS = `
   terms_accepted_at, key_validated_at, created_at, handle
 `
 
-const PROJECT_COLUMNS = `id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at`
+const PROJECT_COLUMNS = `id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json`
 
 export class SqliteStore {
   private readonly sql: Sql
@@ -164,40 +168,130 @@ export class SqliteStore {
   async insertProject(project: ProjectInsert, tasks: TaskInsert[]) {
     await this.transaction(async () => {
       await this.sql.run(
-          `INSERT INTO projects (id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [project.id, project.name, project.github, project.orgUrl, project.nonprofit ? 1 : 0, project.repoPath, project.agentsMd, project.registeredAt])
-      for (const task of tasks) {
-        await this.sql.run(
-            `INSERT INTO tasks (
-              id, project_id, local_id, title, goal, instructions, acceptance, tests,
-              scope_do, scope_dont, deliverable, size, provider_override,
-              estimated_cost_usd, state, donor_id, lease_until, attempts, result,
-              failure_reason, reserved_cost_usd, safety_status, safety_flags, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, 0, ?, ?, ?, ?)`, [task.id,
-            task.projectId,
-            task.localId,
-            task.title,
-            task.goal,
-            task.instructions,
-            task.acceptance,
-            task.tests,
-            JSON.stringify(task.scopeDo),
-            JSON.stringify(task.scopeDont),
-            task.deliverable,
-            task.size,
-            task.providerOverride,
-            task.estimatedCostUsd,
-            task.state,
-            task.safetyStatus,
-            JSON.stringify(task.safetyFlags),
-            task.createdAt,
-            task.createdAt,])
-      }
+          `INSERT INTO projects (id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [project.id, project.name, project.github, project.orgUrl, project.nonprofit ? 1 : 0, project.repoPath, project.agentsMd, project.registeredAt, project.checks ? JSON.stringify(project.checks) : null])
+      for (const task of tasks) await this.insertTaskRow(task)
       for (const task of tasks) {
         for (const dependency of task.dependsOn) {
           await this.sql.run(`INSERT INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)`, [task.id, dependency])
         }
       }
     })
+  }
+
+  private async insertTaskRow(task: TaskInsert) {
+    await this.sql.run(
+      `INSERT INTO tasks (
+        id, project_id, local_id, title, goal, instructions, acceptance, tests,
+        scope_do, scope_dont, deliverable, size, provider_override,
+        estimated_cost_usd, state, donor_id, lease_until, attempts, result,
+        failure_reason, reserved_cost_usd, safety_status, safety_flags, created_at, updated_at, kind
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, 0, ?, ?, ?, ?, ?)`,
+      [task.id, task.projectId, task.localId, task.title, task.goal, task.instructions, task.acceptance, task.tests,
+        JSON.stringify(task.scopeDo), JSON.stringify(task.scopeDont), task.deliverable, task.size, task.providerOverride,
+        task.estimatedCostUsd, task.state, task.safetyStatus, JSON.stringify(task.safetyFlags), task.createdAt, task.createdAt,
+        task.kind ?? 'code'],
+    )
+  }
+
+  // ---------- sync from the repository's task list ----------
+
+  async updateProjectFromManifest(projectId: string, fields: {
+    github: string | null; orgUrl: string | null; nonprofit: boolean; agentsMd: string | null; checks: { setup?: string; run: string } | null
+  }) {
+    await this.ready
+    await this.sql.run(
+      `UPDATE projects SET github = ?, org_url = ?, nonprofit = ?, agents_md = ?, checks_json = ? WHERE id = ?`,
+      [fields.github, fields.orgUrl, fields.nonprofit ? 1 : 0, fields.agentsMd, fields.checks ? JSON.stringify(fields.checks) : null, projectId],
+    )
+  }
+
+  async addTasks(tasks: TaskInsert[]) {
+    await this.ready
+    await this.transaction(async () => {
+      for (const task of tasks) await this.insertTaskRow(task)
+      for (const task of tasks) {
+        for (const dependency of task.dependsOn) {
+          await this.sql.run(`INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)`, [task.id, dependency])
+        }
+      }
+    })
+  }
+
+  // Rewrites the brief of a task nobody is working on. Returns false if the
+  // task was claimed meanwhile.
+  async updateOpenTaskBrief(task: TaskInsert): Promise<boolean> {
+    await this.ready
+    const changed = await this.sql.run(
+      `UPDATE tasks SET title = ?, goal = ?, instructions = ?, acceptance = ?, tests = ?, scope_do = ?, scope_dont = ?,
+         deliverable = ?, size = ?, estimated_cost_usd = ?, safety_status = ?, safety_flags = ?, kind = ?
+       WHERE id = ? AND state IN ('open', 'blocked')`,
+      [task.title, task.goal, task.instructions, task.acceptance, task.tests, JSON.stringify(task.scopeDo), JSON.stringify(task.scopeDont),
+        task.deliverable, task.size, task.estimatedCostUsd, task.safetyStatus, JSON.stringify(task.safetyFlags), task.kind ?? 'code', task.id],
+    )
+    return changed === 1
+  }
+
+  // ---------- server-side workspaces ----------
+
+  async getWorkspace(taskId: string) {
+    await this.ready
+    return await this.sql.get(`SELECT task_id, donor_id, base_sha, created_at FROM workspaces WHERE task_id = ?`, [taskId]) as
+      { task_id: string; donor_id: string; base_sha: string; created_at: number } | undefined
+  }
+
+  async openWorkspace(taskId: string, donorId: string, baseSha: string, now: number) {
+    await this.ready
+    await this.sql.run(`DELETE FROM workspace_files WHERE task_id = ?`, [taskId])
+    await this.sql.run(
+      `INSERT INTO workspaces (task_id, donor_id, base_sha, created_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(task_id) DO UPDATE SET donor_id = excluded.donor_id, base_sha = excluded.base_sha, created_at = excluded.created_at`,
+      [taskId, donorId, baseSha, now],
+    )
+  }
+
+  async clearWorkspace(taskId: string) {
+    await this.ready
+    await this.sql.run(`DELETE FROM workspace_files WHERE task_id = ?`, [taskId])
+    await this.sql.run(`DELETE FROM workspaces WHERE task_id = ?`, [taskId])
+  }
+
+  async putWorkspaceFile(taskId: string, path: string, content: string | null, now: number) {
+    await this.ready
+    await this.sql.run(
+      `INSERT INTO workspace_files (task_id, path, content, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(task_id, path) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`,
+      [taskId, path, content, now],
+    )
+  }
+
+  async listWorkspaceFiles(taskId: string) {
+    await this.ready
+    return await this.sql.all(`SELECT path, content FROM workspace_files WHERE task_id = ? ORDER BY path`, [taskId]) as
+      { path: string; content: string | null }[]
+  }
+
+  async insertCheckRun(row: { id: string; taskId: string; donorId: string; workspaceHash: string; now: number }) {
+    await this.ready
+    await this.sql.run(
+      `INSERT INTO check_runs (id, task_id, donor_id, workspace_hash, status, created_at) VALUES (?, ?, ?, ?, 'running', ?)`,
+      [row.id, row.taskId, row.donorId, row.workspaceHash, row.now],
+    )
+  }
+
+  async finishCheckRun(id: string, status: 'passed' | 'failed' | 'error', exitCode: number | null, output: string, now: number) {
+    await this.ready
+    await this.sql.run(
+      `UPDATE check_runs SET status = ?, exit_code = ?, output = ?, finished_at = ? WHERE id = ? AND status = 'running'`,
+      [status, exitCode, output, now, id],
+    )
+  }
+
+  async latestCheckRun(taskId: string) {
+    await this.ready
+    return await this.sql.get(
+      `SELECT id, task_id, donor_id, workspace_hash, status, exit_code, output, created_at, finished_at FROM check_runs WHERE task_id = ? ORDER BY created_at DESC LIMIT 1`,
+      [taskId],
+    ) as { id: string; task_id: string; donor_id: string; workspace_hash: string; status: string; exit_code: number | null; output: string | null; created_at: number; finished_at: number | null } | undefined
   }
 
   async getProject(id: string) {
@@ -703,6 +797,11 @@ export class SqliteStore {
     return changed === 1
   }
 
+  async setMonthlyTaskBudget(donorId: string, monthly: number): Promise<boolean> {
+    await this.ready
+    return (await this.sql.run(`UPDATE donors SET monthly_task_budget = ? WHERE id = ? AND kind = 'mcp'`, [monthly, donorId])) === 1
+  }
+
   async handleTaken(handle: string): Promise<boolean> {
     await this.ready
     return !!(await this.sql.get(`SELECT 1 AS x FROM donors WHERE handle = ?`, [handle]))
@@ -898,6 +997,7 @@ function taskFromRow(row: TaskRow): TaskRecord {
     safetyFlags: parseList(row.safety_flags),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
+    kind: row.kind === 'writing' ? 'writing' : 'code',
   }
 }
 
@@ -934,6 +1034,17 @@ function projectFromRow(row: ProjectRow): ProjectRecord {
     repoPath: row.repo_path,
     agentsMd: row.agents_md,
     registeredAt: Number(row.registered_at),
+    checks: parseChecks(row.checks_json),
+  }
+}
+
+function parseChecks(value: string | null | undefined): { setup?: string; run: string } | null {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value) as { setup?: unknown; run?: unknown }
+    return typeof parsed.run === 'string' ? { run: parsed.run, ...(typeof parsed.setup === 'string' ? { setup: parsed.setup } : {}) } : null
+  } catch {
+    return null
   }
 }
 
