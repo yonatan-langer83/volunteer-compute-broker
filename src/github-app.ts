@@ -195,6 +195,46 @@ export class GitHubApp {
     return token.token
   }
 
+  // What a GitHub user may do in a repository: 'admin', 'maintain', 'write',
+  // 'triage', 'read' or 'none'. Used to show organizations their own projects.
+  async collaboratorPermission(owner: string, repo: string, login: string): Promise<string> {
+    const token = await this.installationToken(owner, repo)
+    try {
+      const result = await this.call<{ permission?: string; role_name?: string }>(token, 'GET', `/repos/${owner}/${repo}/collaborators/${encodeURIComponent(login)}/permission`)
+      return result.role_name ?? result.permission ?? 'none'
+    } catch {
+      return 'none'
+    }
+  }
+
+  async pullRequestBody(owner: string, repo: string, number: number): Promise<{ body: string | null; user: string; url: string } | null> {
+    const token = await this.installationToken(owner, repo)
+    try {
+      const pr = await this.call<{ body: string | null; user: { login: string }; html_url: string }>(token, 'GET', `/repos/${owner}/${repo}/pulls/${number}`)
+      return { body: pr.body, user: pr.user.login, url: pr.html_url }
+    } catch {
+      return null
+    }
+  }
+
+  // Which protections the default branch has, from GitHub's rules API.
+  async branchProtections(owner: string, repo: string): Promise<{ branch: string; pullRequestRequired: boolean; checksRequired: boolean; reviewsRequired: number } | null> {
+    const token = await this.installationToken(owner, repo)
+    try {
+      const info = await this.call<{ default_branch: string }>(token, 'GET', `/repos/${owner}/${repo}`)
+      const rules = await this.call<{ type: string; parameters?: { required_approving_review_count?: number } }[]>(token, 'GET', `/repos/${owner}/${repo}/rules/branches/${encodeURIComponent(info.default_branch)}`)
+      const pr = rules.find((r) => r.type === 'pull_request')
+      return {
+        branch: info.default_branch,
+        pullRequestRequired: !!pr,
+        checksRequired: rules.some((r) => r.type === 'required_status_checks'),
+        reviewsRequired: pr?.parameters?.required_approving_review_count ?? 0,
+      }
+    } catch {
+      return null
+    }
+  }
+
   // ---------- reading a repository for a volunteer's workspace ----------
 
   async headSha(owner: string, repo: string): Promise<string> {
@@ -255,6 +295,7 @@ export class GitHubApp {
     volunteer: string
     summary: string
     patch: string
+    record?: string
   }): Promise<string> {
     const files = parseUnifiedDiff(input.patch)
     if (files.length === 0) throw new Error('the diff has no files')
@@ -300,9 +341,7 @@ export class GitHubApp {
       `**Volunteer task:** \`${input.localId}\` — ${input.title}`,
       `**Volunteer:** ${input.volunteer}`,
       '',
-      '### What the volunteer reports',
-      '',
-      input.summary.slice(0, 60_000),
+      ...(input.record ? [input.record.slice(0, 60_000)] : ['### What the volunteer reports', '', input.summary.slice(0, 60_000)]),
       '',
       '**Merging this pull request marks the task done on [volunteer.apishelf.dev](https://volunteer.apishelf.dev/). Closing it without merging sends the task back to the pool.**',
       '',
@@ -331,7 +370,7 @@ export function appManifest(origin: string) {
     hook_attributes: { url: `${origin}/github/webhook`, active: true },
     redirect_url: `${origin}/setup/github/callback`,
     public: true,
-    default_permissions: { contents: 'write', pull_requests: 'write', metadata: 'read' },
-    default_events: ['pull_request'],
+    default_permissions: { contents: 'write', pull_requests: 'write', metadata: 'read', checks: 'read' },
+    default_events: ['pull_request', 'pull_request_review', 'check_suite'],
   }
 }

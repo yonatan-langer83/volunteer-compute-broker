@@ -37,6 +37,7 @@ describe('MCP server', () => {
     const submitted = await callJson<{ ok: boolean }>(client, 'submit_result', {
       task_id: claimed.taskId,
       summary: 'Opened the notes pull request',
+      evidence: [{ criterion: 'two paragraphs', evidence: 'The notes have two paragraphs.' }],
       pr_url: 'https://example.com/pull/1',
     })
     expect(submitted.ok).toBe(true)
@@ -64,6 +65,7 @@ describe('MCP server', () => {
       (await callJson<{ ok: boolean }>(client, 'submit_result', {
         task_id: publish.taskId,
         summary: 'Published the notes',
+        evidence: [{ criterion: 'published', evidence: 'notes.md is in place.' }],
         patch: 'notes.md',
       })).ok,
     ).toBe(true)

@@ -109,6 +109,46 @@ export async function handleGithubWebhook(broker: Broker, store: SqliteStore, ma
     for (const repo of repos) opened.push(...await broker.openPendingPullRequests(repo.full_name))
     return Response.json({ opened })
   }
+  if (kind === 'pull_request_review') {
+    const event = JSON.parse(body) as {
+      action: string
+      review: { state: string; body: string | null; html_url: string }
+      pull_request: { body: string | null; user: { login: string } }
+      repository: { full_name: string }
+    }
+    if (event.action !== 'submitted') return Response.json({ ignored: 'action' })
+    if (event.pull_request.user.login !== `${creds.slug}[bot]`) return Response.json({ ignored: 'not_ours' })
+    const taskId = taskIdFromPrBody(event.pull_request.body)
+    const state = event.review.state.toLowerCase()
+    if (!taskId || (state !== 'changes_requested' && state !== 'approved')) return Response.json({ ignored: 'review' })
+    return Response.json(await broker.pullRequestSignal({
+      taskId, repository: event.repository.full_name, kind: state as 'changes_requested' | 'approved',
+      detail: event.review.body, url: event.review.html_url,
+    }))
+  }
+  if (kind === 'check_suite') {
+    const event = JSON.parse(body) as {
+      action: string
+      check_suite: { conclusion: string | null; app?: { name?: string }; pull_requests: { number: number }[] }
+      repository: { full_name: string }
+    }
+    if (event.action !== 'completed' || !event.check_suite.pull_requests.length) return Response.json({ ignored: 'action' })
+    const repo = parseRepo(`https://github.com/${event.repository.full_name}`)
+    if (!repo) return Response.json({ ignored: 'repo' })
+    const app = new GitHubApp(creds)
+    const recorded: unknown[] = []
+    for (const { number } of event.check_suite.pull_requests.slice(0, 5)) {
+      const pr = await app.pullRequestBody(repo.owner, repo.repo, number)
+      const taskId = pr && pr.user === `${creds.slug}[bot]` ? taskIdFromPrBody(pr.body) : null
+      if (!taskId) continue
+      const passed = event.check_suite.conclusion === 'success' || event.check_suite.conclusion === 'neutral' || event.check_suite.conclusion === 'skipped'
+      recorded.push(await broker.pullRequestSignal({
+        taskId, repository: event.repository.full_name, kind: passed ? 'checks_passed' : 'checks_failed',
+        detail: `${event.check_suite.app?.name ?? 'CI'}: ${event.check_suite.conclusion ?? 'unknown'}`, url: pr!.url,
+      }))
+    }
+    return Response.json({ recorded })
+  }
   if (kind !== 'pull_request') return Response.json({ ignored: 'event' })
   const event = JSON.parse(body) as {
     action: string

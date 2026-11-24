@@ -52,6 +52,7 @@ export type TaskRecord = {
   projectId: string
   localId: string
   kind: 'code' | 'writing'
+  needsComputer: boolean
   title: string
   goal: string
   instructions: string

@@ -1,13 +1,15 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { briefFingerprint, canonicalBrief, patchPaths, pullRequestRecord, scanPatch, validateEvidence, validatePlan, type Plan } from './contribution.js'
+import { editablePaths, isEditable } from './workspace.js'
 
 import { budgetPeriod, compareClaimable, explainTaskFit, placementBlock, supportsProject } from './budget.js'
 import { publicHandle } from './handle.js'
 import { briefText, lintInjection } from './injection-lint.js'
 import type { TaskSize } from './task-size.js'
 import { isTaskSize } from './task-size.js'
-import { SAFETY_RULES, VOLUNTEER_RULES } from './volunteer-rules.js'
+import { SAFETY_RULES, VOLUNTEER_RULES, WORKFLOW } from './volunteer-rules.js'
 import { encryptSecret, parseEnvelope } from './crypto.js'
 import { checkEligibility } from './eligibility.js'
 import { loadManifest, ManifestError, type Manifest } from './manifest.js'
@@ -49,6 +51,7 @@ export type PullRequestOpener = {
     volunteer: string
     summary: string
     patch: string
+    record?: string
   }): Promise<string | null>
 }
 
@@ -73,6 +76,7 @@ export class Broker {
   private readonly leaseMs: number
   private readonly pullRequests: PullRequestOpener | null
   private readonly logger: Logger
+  readonly requirePlan: boolean
 
   constructor(options: {
     store: SqliteStore
@@ -82,7 +86,10 @@ export class Broker {
     leaseMs?: number
     logger?: Logger
     pullRequests?: PullRequestOpener
+    // Live servers require a plan before work and keep coding-tool diffs inside the task.
+    requirePlan?: boolean
   }) {
+    this.requirePlan = options.requirePlan ?? false
     this.pullRequests = options.pullRequests ?? null
     this.store = options.store
     this.masterKey = options.masterKey
@@ -130,6 +137,7 @@ export class Broker {
         projectId,
         localId: task.id,
         kind: task.kind ?? 'code',
+        needsComputer: task.needsComputer ?? false,
         title: task.title,
         goal: task.goal,
         instructions: task.instructions,
@@ -479,6 +487,9 @@ export class Broker {
     if (donor?.kind === 'mcp') {
       const gate = await this.sessionGate(donorId, existing.size)
       if (gate) return gate
+      if (existing.needsComputer && !(await this.store.getOpenSession(donorId))?.hasComputer) {
+        return { ok: false, reason: 'needs_computer' }
+      }
     }
     const now = this.now()
     const leaseMs = donor?.kind === 'mcp' ? mcpLeaseMs(existing.size) : this.leaseMs
@@ -632,6 +643,7 @@ export class Broker {
     if (donor.kind === 'mcp' && !session) return []
     const tasks = (await this.store.listOpenForDonor(donor.kind === 'mcp' ? null : donor.provider, now)).filter((task) => {
       if (session && task.size !== session.size) return false
+      if (session && !session.hasComputer && task.needsComputer) return false
       const project = projects.get(task.projectId)
       return (
         explainTaskFit({
@@ -693,7 +705,29 @@ export class Broker {
         agentsMd,
       },
       rules: [...VOLUNTEER_RULES],
+      workflow: [...WORKFLOW],
+      previousFeedback: task.failureReason ?? null,
+      briefFingerprint: briefFingerprint(canonicalBrief(task, agentsMd)),
+      plan: await this.planFor(donorId, taskId),
     }
+  }
+
+  // Step one of every task: the volunteer's AI says, before any change, what it
+  // understood, which files it will touch, its steps and how it will check.
+  async submitPlan(donorId: string, taskId: string, input: Partial<Plan>) {
+    const task = await this.store.getTask(taskId)
+    if (!task || task.donorId !== donorId || (task.state !== 'claimed' && task.state !== 'running')) {
+      return { ok: false as const, reason: 'not_held', message: 'You are not holding this task.' }
+    }
+    const checked = validatePlan(task, input)
+    if (!checked.ok) return { ok: false as const, reason: 'plan_invalid', message: checked.reason }
+    await this.store.savePlan(taskId, donorId, JSON.stringify(checked.plan), this.now())
+    return { ok: true as const, plan: checked.plan, next: 'Now make the changes, only in the files you listed.' }
+  }
+
+  async planFor(donorId: string, taskId: string): Promise<Plan | null> {
+    const row = await this.store.getPlanRecord(taskId, donorId)
+    return row?.plan_json ? JSON.parse(row.plan_json) as Plan : null
   }
 
   async approveSafety(taskId: string) {
@@ -708,7 +742,7 @@ export class Broker {
   async submitResult(
     donorId: string,
     taskId: string,
-    input: { summary: string; prUrl?: string | null; patch?: string | null },
+    input: { summary: string; prUrl?: string | null; patch?: string | null; evidence?: unknown; checkStatus?: string | null; checkOutput?: string | null },
   ) {
     const summary = input.summary.trim()
     if (summary.length === 0 || summary.length > 2_000) return { ok: false, reason: 'summary_invalid' }
@@ -720,8 +754,34 @@ export class Broker {
     if (!prUrl && !patch) return { ok: false, reason: 'submission_empty' }
     if (prUrl && !/^https?:\/\/\S{1,500}$/.test(prUrl)) return { ok: false, reason: 'pr_url_invalid' }
     if (patch && patch.length > 100_000) return { ok: false, reason: 'patch_too_large' }
+    const evidence = validateEvidence(input.evidence)
+    if (this.requirePlan || patch) {
+      const task = await this.store.getTask(taskId)
+      if (task && task.donorId === donorId) {
+        if (this.requirePlan && !(await this.planFor(donorId, taskId))) {
+          return { ok: false, reason: 'plan_required', message: 'Call submit_plan first: what you understood, the files, your steps and how you check.' }
+        }
+        if (this.requirePlan && evidence.length === 0) {
+          return { ok: false, reason: 'evidence_required', message: 'Add evidence: for each acceptance criterion, how you know it is met.' }
+        }
+        if (patch) {
+          const outside = patchPaths(patch).filter((path) => !isEditable(task, path))
+          if (this.requirePlan && outside.length) {
+            return { ok: false, reason: 'out_of_scope', message: `The change touches files outside the task: ${outside.join(', ')}. Allowed: ${editablePaths(task).join(', ') || 'none'}.` }
+          }
+          const blocked = scanPatch(patch).filter((w) => w.blocking)
+          if (blocked.length) {
+            return { ok: false, reason: 'warning_signs', message: `The change contains ${blocked.map((w) => `${w.detail} in ${w.file}`).join('; ')}. Remove it and submit again.` }
+          }
+        }
+      }
+    }
     const result = await this.store.submit(taskId, donorId, { summary, url: prUrl, patch }, this.now())
     if (result.ok) await this.store.completeSessionTask(donorId, this.now())
+    if (result.ok) {
+      const record = JSON.stringify({ evidence, checkOutput: input.checkOutput?.slice(-6000) ?? null })
+      await this.store.saveSubmissionRecord(taskId, donorId, record, input.checkStatus ?? null, this.now())
+    }
     if (result.ok && patch && this.pullRequests) {
       const opened = await this.openPullRequest(taskId, donorId, summary, patch)
       return { ...result, pullRequest: opened }
@@ -737,9 +797,22 @@ export class Broker {
       const project = task ? await this.store.getProject(task.projectId) : null
       const donor = await this.store.getDonor(donorId)
       if (!task || !project || !donor) return null
+      const volunteer = donor.handle || donor.name
+      const saved = await this.store.getPlanRecord(taskId, donorId)
+      const extra = saved?.evidence_json ? JSON.parse(saved.evidence_json) as { evidence?: unknown; checkOutput?: string | null } : {}
+      const agentsMd = project.agentsMd && project.agentsMd.length > 0 ? project.agentsMd : null
+      const record = pullRequestRecord({
+        task,
+        brief: canonicalBrief(task, agentsMd),
+        volunteer,
+        summary,
+        plan: saved?.plan_json ? JSON.parse(saved.plan_json) as Plan : null,
+        evidence: validateEvidence(extra.evidence),
+        patch,
+        checks: saved?.check_status ? { status: saved.check_status, output: extra.checkOutput ?? null } : null,
+      })
       const url = await this.pullRequests!.open({
-        project, taskId, localId: task.localId, title: task.title,
-        volunteer: donor.handle || donor.name, summary, patch,
+        project, taskId, localId: task.localId, title: task.title, volunteer, summary, patch, record,
       })
       if (url) await this.store.recordResultUrl(taskId, url)
       return url
@@ -766,6 +839,19 @@ export class Broker {
   }
 
   // A pull request the broker opened was merged or closed on GitHub.
+  // GitHub's own signals on a volunteer pull request: review verdicts and CI
+  // results. They are kept on the task, shown to the organization, and passed
+  // to the next volunteer if the pull request is closed.
+  async pullRequestSignal(input: { taskId: string; repository: string; kind: 'changes_requested' | 'approved' | 'checks_failed' | 'checks_passed'; detail: string | null; url: string | null }) {
+    const task = await this.store.getTask(input.taskId)
+    if (!task) return { ok: false as const, reason: 'not_found' }
+    const project = await this.store.getProject(task.projectId)
+    const repo = project?.github?.match(/github\.com\/([^/]+\/[^/#?]+?)(?:\.git)?\/?$/)?.[1]
+    if (!repo || repo.toLowerCase() !== input.repository.toLowerCase()) return { ok: false as const, reason: 'wrong_repository' }
+    await this.store.addTaskSignal({ id: randomUUID(), taskId: input.taskId, kind: input.kind, detail: input.detail?.slice(0, 2000) ?? null, url: input.url }, this.now())
+    return { ok: true as const }
+  }
+
   async pullRequestClosed(input: { taskId: string; merged: boolean; repository: string }) {
     const task = await this.store.getTask(input.taskId)
     if (!task) return { ok: false as const, reason: 'not_found' }
@@ -775,7 +861,17 @@ export class Broker {
     if (task.state !== 'review') return { ok: false as const, reason: 'not_review' }
     return input.merged
       ? this.acceptSubmission(input.taskId)
-      : this.rejectSubmission(input.taskId, 'The maintainer closed the pull request without merging it.')
+      : this.rejectSubmission(input.taskId, await this.closingFeedback(input.taskId))
+  }
+
+  private async closingFeedback(taskId: string): Promise<string> {
+    const signals = await this.store.listTaskSignals(taskId)
+    const review = signals.find((s) => s.kind === 'changes_requested' && s.detail)
+    const checks = signals.find((s) => s.kind === 'checks_failed' || s.kind === 'checks_passed')
+    const parts = ['The maintainer closed the pull request without merging it.']
+    if (review) parts.push(`Their review: ${review.detail}`)
+    if (checks?.kind === 'checks_failed') parts.push(`CI failed: ${checks.detail ?? 'see the pull request'}.`)
+    return parts.join(' ').slice(0, 500)
   }
 
   async acceptSubmission(taskId: string) {
@@ -826,7 +922,7 @@ export class Broker {
     return result
   }
 
-  async requestWork(donorId: string, count: number, size: string) {
+  async requestWork(donorId: string, count: number, size: string, hasComputer = true) {
     if (!Number.isInteger(count) || count < 1 || count > 20) return { ok: false as const, reason: 'count_invalid' }
     if (!isTaskSize(size)) return { ok: false as const, reason: 'size_invalid' }
     await this.store.rollBudgets(this.now())
@@ -838,7 +934,7 @@ export class Broker {
     if (donor.spentTasks + donor.reservedTasks + count > budget) return { ok: false as const, reason: 'task_budget_exceeded' }
     const now = this.now()
     const id = randomUUID()
-    await this.store.openWorkSession(id, donorId, size, count, now)
+    await this.store.openWorkSession(id, donorId, size, count, now, hasComputer)
     this.logger.info(`donor ${donorId} ready for ${count} ${size} tasks`)
     return { ok: true as const, sessionId: id, count, size, completed: 0 }
   }

@@ -13,6 +13,10 @@ import { GitHubApp, parseRepo } from './github-app.js'
 import { createPullRequestOpener, handleGithubWebhook, handleSetupCallback, handleSetupStart, loadAppCredentials } from './github-routes.js'
 import { parseManifestYaml } from './manifest.js'
 import { createMcpServer } from './mcp-tools.js'
+import {
+  accountAction, accountPage, emailStart, emailVerify, emailVerifyPage, githubCallback, githubStart, signinPage,
+  signinSetupCallback, signinSetupStart, signOut, safeReturn, type AccountDeps, type CreateLinkedVolunteer,
+} from './site/account.js'
 import { handleAuthorize } from './site/authorize.js'
 import { notFoundPage } from './site/pages.js'
 import { handleApply, handleJoin, handleSiteGet, handleWaitlist, passesTurnstile, type SiteDeps } from './site/router.js'
@@ -48,6 +52,9 @@ export interface Env {
   TEST_RUNNER?: ObjectNamespace
   // "true" once the Cloudflare deploy token may create test machines (Containers).
   CHECKS_ENABLED?: string
+  // Cloudflare Email Sending (needs Workers Paid). Without it, email sign-in is hidden.
+  EMAIL?: { send(message: { to: string; from: { email: string; name: string }; subject: string; text: string; html: string }): Promise<unknown> }
+  EMAIL_FROM?: string
 }
 
 const STATIC = /^\/(site\.css|site\.js|favicon\.svg|og\.png|fonts\/[a-z0-9-]+\.woff2)$/
@@ -58,6 +65,63 @@ function siteDeps(env: Env, store: SqliteStore): SiteDeps {
     config: { turnstileSiteKey: env.TURNSTILE_SITE_KEY || null, contactEmail: env.CONTACT_EMAIL || null },
     turnstileSecret: env.TURNSTILE_SECRET || null,
   }
+}
+
+function createLinkedVolunteer(env: Env): CreateLinkedVolunteer {
+  return async ({ nickname, monthly, accountId }) => {
+    const response = await env.BROKER.get(env.BROKER.idFromName('broker')).fetch(
+      new Request('https://broker/internal/volunteer', { method: 'POST', body: JSON.stringify({ nickname, monthly, accountId }) }),
+    )
+    return (await response.json()) as { ok: true; donorId: string } | { ok: false; error: string }
+  }
+}
+
+function accountDeps(env: Env, store: SqliteStore): AccountDeps {
+  const masterKey = loadMasterKey(env.BROKER_MASTER_KEY)
+  const email = env.EMAIL
+  return {
+    store,
+    masterKey,
+    oauth: env.OAUTH_PROVIDER ?? null,
+    sendEmail: email
+      ? async (message) => {
+        await email.send({ ...message, from: { email: env.EMAIL_FROM || 'signin@apishelf.dev', name: 'Volunteer Pool' } })
+      }
+      : null,
+    turnstileSiteKey: env.TURNSTILE_SITE_KEY || null,
+    verifyTurnstile: (form, req) => passesTurnstile(siteDeps(env, store), form, req),
+    createVolunteer: createLinkedVolunteer(env),
+    githubApp: async () => {
+      const creds = await loadAppCredentials(store, masterKey)
+      return creds ? new GitHubApp(creds) : null
+    },
+  }
+}
+
+const ACCOUNT_ACTIONS = new Set(['volunteer', 'link', 'monthly', 'keys', 'keys/revoke', 'apps/disconnect'])
+
+async function accountRoutes(request: Request, env: Env, url: URL): Promise<Response | null> {
+  const path = url.pathname
+  const get = request.method === 'GET' || request.method === 'HEAD'
+  const post = request.method === 'POST'
+  const run = (fn: (deps: AccountDeps) => Promise<Response>) => withStore(env, (store) => fn(accountDeps(env, store)))
+  if (get && path === '/signin') {
+    const app = url.searchParams.get('for')
+    return run((deps) => signinPage(deps, safeReturn(url.searchParams.get('return')), undefined, app))
+  }
+  if (get && path === '/auth/github') return run((deps) => githubStart(deps, url))
+  if (get && path === '/auth/github/callback') return run((deps) => githubCallback(deps, request, url))
+  if (post && path === '/auth/email') return run((deps) => emailStart(deps, request))
+  if (get && path === '/auth/email/verify') return run((deps) => emailVerifyPage(deps, url))
+  if (post && path === '/auth/email/verify') return run((deps) => emailVerify(deps, request))
+  if (post && path === '/signout') return run((deps) => signOut(deps, request))
+  if (get && path === '/account') return run((deps) => accountPage(deps, request, url.searchParams.get('notice') ?? undefined))
+  if (post && path.startsWith('/account/') && ACCOUNT_ACTIONS.has(path.slice('/account/'.length))) {
+    return run((deps) => accountAction(deps, request, path.slice('/account/'.length)))
+  }
+  if (get && path === '/setup/signin') return withStore(env, (store) => signinSetupStart(store, url, Date.now()))
+  if (get && path === '/setup/signin/callback') return withStore(env, (store) => signinSetupCallback(store, loadMasterKey(env.BROKER_MASTER_KEY), url, Date.now()))
+  return null
 }
 
 async function withStore<T>(env: Env, run: (store: SqliteStore) => Promise<T>): Promise<T> {
@@ -95,16 +159,11 @@ const siteHandler = {
       return withStore(env, (store) => handleAuthorize(request, {
         oauth: env.OAUTH_PROVIDER,
         store,
-        turnstileSiteKey: env.TURNSTILE_SITE_KEY || null,
-        verifyTurnstile: (form, req) => passesTurnstile(siteDeps(env, store), form, req),
-        createVolunteer: async (nickname, monthly) => {
-          const response = await env.BROKER.get(env.BROKER.idFromName('broker')).fetch(
-            new Request('https://broker/internal/volunteer', { method: 'POST', body: JSON.stringify({ nickname, monthly }) }),
-          )
-          return (await response.json()) as { ok: true; donorId: string; token: string } | { ok: false; error: string }
-        },
+        createVolunteer: createLinkedVolunteer(env),
       }))
     }
+    const account = await accountRoutes(request, env, url)
+    if (account) return account
     if ((request.method === 'GET' || request.method === 'HEAD') && STATIC.test(url.pathname) && env.ASSETS) return env.ASSETS.fetch(request)
     if (request.method === 'GET' && isPublicPath(url.pathname)) return servePublic(env, url.pathname)
     if (request.method === 'GET' && (url.pathname === '/setup/github' || url.pathname === '/setup/github/callback')) {
@@ -135,17 +194,20 @@ const siteHandler = {
 function stripInternal(request: Request): Request {
   const headers = new Headers(request.headers)
   headers.delete('x-volunteer-donor')
+  headers.delete('x-volunteer-tool')
   return new Request(request, { headers })
 }
 
 // Signed-in MCP requests: the OAuth layer has checked the token (or a
 // volunteer's connection key) and put the volunteer in ctx.props.
 const mcpApi = {
-  async fetch(request: Request, env: Env, ctx: { props?: { donorId?: string } }): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: { props?: { donorId?: string; via?: string } }): Promise<Response> {
     const donorId = ctx.props?.donorId
     if (!donorId) return Response.json({ error: 'unauthorized' }, { status: 401 })
     const headers = new Headers(request.headers)
     headers.set('x-volunteer-donor', donorId)
+    // A connection key means a coding tool on the volunteer's computer; sign-in means a chat app.
+    headers.set('x-volunteer-tool', ctx.props?.via === 'key' ? 'coding' : 'chat')
     return env.BROKER.get(env.BROKER.idFromName('broker')).fetch(new Request(request, { headers }))
   },
 }
@@ -175,8 +237,13 @@ function providerFor(request: Request): OAuthProvider<Env> {
       // Coding tools keep using a volunteer's connection key as a bearer token.
       resolveExternalToken: async ({ token, env }) => {
         if (!token.startsWith('vbk_')) return null
-        const donorId = await withStore(env, (store) => store.findActiveDonorByTokenHash(createHash('sha256').update(token).digest('hex')))
-        return donorId ? { props: { donorId }, audience: resource } : null
+        const hash = createHash('sha256').update(token).digest('hex')
+        const donorId = await withStore(env, async (store) => {
+          const found = await store.findActiveDonorByTokenHash(hash)
+          if (found) await store.touchToken(hash, Date.now())
+          return found
+        })
+        return donorId ? { props: { donorId, via: 'key' }, audience: resource } : null
       },
     })
     providers.set(allowed, provider)
@@ -225,6 +292,7 @@ export class BrokerObject extends DurableObject<Env> {
         return Response.json({ error: 'broker_unavailable' }, { status: 500 })
       }
       return handleMcp(broker, request, request.headers.get('x-volunteer-donor'), {
+        connection: request.headers.get('x-volunteer-tool') === 'coding' ? 'coding' : 'chat',
         workspaces: this.workspaces,
         serialize: this.serialize,
       })
@@ -255,9 +323,15 @@ export class BrokerObject extends DurableObject<Env> {
   private workspaces: Workspaces | null = null
 
   private async createVolunteer(broker: Broker, request: Request): Promise<Response> {
-    const { nickname, monthly } = (await request.json()) as { nickname: string; monthly: number }
-    if (await this.store!.handleTaken(nickname)) return Response.json({ ok: false, error: `The nickname ${nickname} is taken. Please choose another.` })
+    const { nickname, monthly, accountId } = (await request.json()) as { nickname: string; monthly: number; accountId?: string }
+    if (await this.store!.handleTaken(nickname)) return Response.json({ ok: false, error: `The name ${nickname} is taken. Please choose another.` })
+    if (accountId && await this.store!.donorForAccount(accountId)) return Response.json({ ok: false, error: 'This account already has a volunteer name.' })
     const donor = await broker.registerMcpDonor({ name: nickname, monthlyTasks: monthly, acceptTerms: true })
+    if (accountId) {
+      // Account volunteers connect apps by signing in, and make keys on their account page.
+      await this.store!.linkDonorToAccount(donor.id, accountId)
+      return Response.json({ ok: true, donorId: donor.id })
+    }
     const { token } = await broker.mintMcpToken(donor.id)
     return Response.json({ ok: true, donorId: donor.id, token })
   }
@@ -304,6 +378,7 @@ export class BrokerObject extends DurableObject<Env> {
       store,
       masterKey,
       pullRequests: createPullRequestOpener(store, masterKey),
+      requirePlan: true,
       providers: createFakeRegistry(),
       logger: {
         info() {},

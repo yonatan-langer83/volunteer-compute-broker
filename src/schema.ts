@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   kind TEXT NOT NULL DEFAULT 'code',
+  needs_computer INTEGER NOT NULL DEFAULT 0,
   UNIQUE (project_id, local_id)
 );
 
@@ -66,7 +67,8 @@ CREATE TABLE IF NOT EXISTS donors (
   terms_accepted_at INTEGER NOT NULL,
   key_validated_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  handle TEXT NOT NULL
+  handle TEXT NOT NULL,
+  account_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS secrets (
@@ -96,7 +98,9 @@ CREATE TABLE IF NOT EXISTS mcp_tokens (
   donor_id TEXT NOT NULL REFERENCES donors(id),
   token_hash TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL,
-  revoked_at INTEGER
+  revoked_at INTEGER,
+  label TEXT,
+  last_used_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS work_sessions (
@@ -107,7 +111,8 @@ CREATE TABLE IF NOT EXISTS work_sessions (
   completed INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL CHECK (status IN ('open', 'done', 'stopped')),
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  has_computer INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS github_app (
@@ -186,4 +191,61 @@ CREATE INDEX IF NOT EXISTS idx_check_runs_task ON check_runs(task_id, created_at
 CREATE INDEX IF NOT EXISTS idx_tasks_claim ON tasks (state, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_sessions_donor ON work_sessions (donor_id, status);
 CREATE INDEX IF NOT EXISTS idx_deps_parent ON task_dependencies (depends_on_id);
+
+CREATE TABLE IF NOT EXISTS accounts (
+  id TEXT PRIMARY KEY,
+  github_id TEXT UNIQUE,
+  github_login TEXT,
+  email TEXT UNIQUE,
+  created_at INTEGER NOT NULL,
+  last_login_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS account_sessions (
+  id_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts(id),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS account_sessions_account ON account_sessions(account_id);
+
+CREATE TABLE IF NOT EXISTS login_links (
+  token_hash TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  return_to TEXT,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS signin_app (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  client_id TEXT NOT NULL,
+  client_secret_sealed TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS donors_account ON donors(account_id);
+
+CREATE TABLE IF NOT EXISTS task_plans (
+  task_id TEXT PRIMARY KEY,
+  donor_id TEXT NOT NULL,
+  plan_json TEXT,
+  evidence_json TEXT,
+  check_status TEXT,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_signals (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  detail TEXT,
+  url TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS task_signals_task ON task_signals(task_id, created_at);
 `

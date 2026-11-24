@@ -16,6 +16,8 @@ export type ProjectChecks = { setup?: string; run: string }
 export type ManifestTask = {
   id: string
   kind: TaskKind
+  // true when the task can only be done on the volunteer's own computer (not in a chat app)
+  needsComputer: boolean
   title: string
   goal: string
   instructions: string
@@ -201,6 +203,11 @@ function parseTask(entry: unknown, index: number, errors: string[]): ManifestTas
     if (entry.kind === 'code' || entry.kind === 'writing') kind = entry.kind
     else errors.push(`${label}.kind must be code or writing`)
   }
+  let needsComputer = false
+  if (entry.needs != null) {
+    if (entry.needs === 'computer') needsComputer = true
+    else errors.push(`${label}.needs can only be computer`)
+  }
   // Writing tasks (docs, translations, research notes) may have no commands:
   // the organization checks them by reading.
   const tests = readText(entry.tests) || (kind === 'writing' ? 'No commands: the organization reads the result against the acceptance criteria.' : '')
@@ -269,6 +276,7 @@ function parseTask(entry: unknown, index: number, errors: string[]): ManifestTas
   return {
     id,
     kind,
+    needsComputer,
     title,
     goal,
     instructions,

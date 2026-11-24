@@ -11,6 +11,7 @@ import { isProviderId } from './types.js'
 
 type TaskRow = {
   kind?: string | null
+  needs_computer?: number | null
   id: string
   project_id: string
   local_id: string
@@ -86,6 +87,7 @@ export type ProjectInsert = {
 
 export type TaskInsert = {
   kind?: 'code' | 'writing'
+  needsComputer?: boolean
   id: string
   projectId: string
   localId: string
@@ -135,7 +137,7 @@ const TASK_COLUMNS = `
   scope_do, scope_dont, deliverable, size, provider_override,
   estimated_cost_usd, state, donor_id, lease_until, attempts, result,
   failure_reason, reserved_cost_usd, budget_period, submission_summary,
-  submission_url, submission_patch, safety_status, safety_flags, created_at, updated_at, kind
+  submission_url, submission_patch, safety_status, safety_flags, created_at, updated_at, kind, needs_computer
 `
 
 const DONOR_COLUMNS = `
@@ -145,6 +147,8 @@ const DONOR_COLUMNS = `
 `
 
 const PROJECT_COLUMNS = `id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json`
+
+export type AccountRow = { id: string; github_id: string | null; github_login: string | null; email: string | null }
 
 export class SqliteStore {
   private readonly sql: Sql
@@ -184,12 +188,12 @@ export class SqliteStore {
         id, project_id, local_id, title, goal, instructions, acceptance, tests,
         scope_do, scope_dont, deliverable, size, provider_override,
         estimated_cost_usd, state, donor_id, lease_until, attempts, result,
-        failure_reason, reserved_cost_usd, safety_status, safety_flags, created_at, updated_at, kind
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, 0, ?, ?, ?, ?, ?)`,
+        failure_reason, reserved_cost_usd, safety_status, safety_flags, created_at, updated_at, kind, needs_computer
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, 0, ?, ?, ?, ?, ?, ?)`,
       [task.id, task.projectId, task.localId, task.title, task.goal, task.instructions, task.acceptance, task.tests,
         JSON.stringify(task.scopeDo), JSON.stringify(task.scopeDont), task.deliverable, task.size, task.providerOverride,
         task.estimatedCostUsd, task.state, task.safetyStatus, JSON.stringify(task.safetyFlags), task.createdAt, task.createdAt,
-        task.kind ?? 'code'],
+        task.kind ?? 'code', task.needsComputer ? 1 : 0],
     )
   }
 
@@ -223,10 +227,10 @@ export class SqliteStore {
     await this.ready
     const changed = await this.sql.run(
       `UPDATE tasks SET title = ?, goal = ?, instructions = ?, acceptance = ?, tests = ?, scope_do = ?, scope_dont = ?,
-         deliverable = ?, size = ?, estimated_cost_usd = ?, safety_status = ?, safety_flags = ?, kind = ?
+         deliverable = ?, size = ?, estimated_cost_usd = ?, safety_status = ?, safety_flags = ?, kind = ?, needs_computer = ?
        WHERE id = ? AND state IN ('open', 'blocked')`,
       [task.title, task.goal, task.instructions, task.acceptance, task.tests, JSON.stringify(task.scopeDo), JSON.stringify(task.scopeDont),
-        task.deliverable, task.size, task.estimatedCostUsd, task.safetyStatus, JSON.stringify(task.safetyFlags), task.kind ?? 'code', task.id],
+        task.deliverable, task.size, task.estimatedCostUsd, task.safetyStatus, JSON.stringify(task.safetyFlags), task.kind ?? 'code', task.needsComputer ? 1 : 0, task.id],
     )
     return changed === 1
   }
@@ -863,7 +867,7 @@ export class SqliteStore {
   async latestSession(donorId: string): Promise<WorkSession | null> {
     await this.ready
     const row = await this.sql.get(
-      `SELECT id, donor_id, size, task_count, completed, status FROM work_sessions WHERE donor_id = ? ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, donor_id, size, task_count, completed, status, has_computer FROM work_sessions WHERE donor_id = ? ORDER BY created_at DESC LIMIT 1`,
       [donorId],
     ) as SessionRow | undefined
     return row ? sessionFromRow(row) : null
@@ -872,18 +876,18 @@ export class SqliteStore {
   async getOpenSession(donorId: string): Promise<WorkSession | null> {
     await this.ready
     const row = await this.sql.get(
-      `SELECT id, donor_id, size, task_count, completed, status FROM work_sessions WHERE donor_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, donor_id, size, task_count, completed, status, has_computer FROM work_sessions WHERE donor_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1`,
       [donorId],
     ) as SessionRow | undefined
     return row ? sessionFromRow(row) : null
   }
 
-  async openWorkSession(id: string, donorId: string, size: TaskSize, taskCount: number, now: number) {
+  async openWorkSession(id: string, donorId: string, size: TaskSize, taskCount: number, now: number, hasComputer = true) {
     await this.transaction(async () => {
       await this.sql.run(`UPDATE work_sessions SET status = 'stopped', updated_at = ? WHERE donor_id = ? AND status = 'open'`, [now, donorId])
       await this.sql.run(
-        `INSERT INTO work_sessions (id, donor_id, size, task_count, completed, status, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 'open', ?, ?)`,
-        [id, donorId, size, taskCount, now, now],
+        `INSERT INTO work_sessions (id, donor_id, size, task_count, completed, status, created_at, updated_at, has_computer) VALUES (?, ?, ?, ?, 0, 'open', ?, ?, ?)`,
+        [id, donorId, size, taskCount, now, now, hasComputer ? 1 : 0],
       )
     })
   }
@@ -921,8 +925,165 @@ export class SqliteStore {
     return info === 1
   }
 
-  async insertToken(id: string, donorId: string, tokenHash: string, createdAt: number) {
-    await this.sql.run(`INSERT INTO mcp_tokens (id, donor_id, token_hash, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)`, [id, donorId, tokenHash, createdAt])
+  async insertToken(id: string, donorId: string, tokenHash: string, createdAt: number, label: string | null = null) {
+    await this.sql.run(`INSERT INTO mcp_tokens (id, donor_id, token_hash, created_at, revoked_at, label) VALUES (?, ?, ?, ?, NULL, ?)`, [id, donorId, tokenHash, createdAt, label])
+  }
+
+  async touchToken(tokenHash: string, now: number) {
+    await this.sql.run(`UPDATE mcp_tokens SET last_used_at = ? WHERE token_hash = ? AND (last_used_at IS NULL OR last_used_at < ?)`, [now, tokenHash, now - 60 * 60 * 1000])
+  }
+
+  async listTokens(donorId: string) {
+    await this.ready
+    return await this.sql.all(
+      `SELECT id, label, created_at, last_used_at FROM mcp_tokens WHERE donor_id = ? AND revoked_at IS NULL ORDER BY created_at DESC`,
+      [donorId],
+    ) as { id: string; label: string | null; created_at: number; last_used_at: number | null }[]
+  }
+
+  async revokeToken(donorId: string, tokenId: string, now: number) {
+    return await this.sql.run(`UPDATE mcp_tokens SET revoked_at = ? WHERE id = ? AND donor_id = ? AND revoked_at IS NULL`, [now, tokenId, donorId])
+  }
+
+  // ---------- plans and evidence ----------
+
+  // A new holder starts with an empty record: a plan belongs to one volunteer's attempt.
+  async savePlan(taskId: string, donorId: string, planJson: string, now: number) {
+    await this.sql.run(
+      `INSERT INTO task_plans (task_id, donor_id, plan_json, evidence_json, check_status, updated_at) VALUES (?, ?, ?, NULL, NULL, ?)
+       ON CONFLICT(task_id) DO UPDATE SET donor_id = excluded.donor_id, plan_json = excluded.plan_json,
+         evidence_json = CASE WHEN task_plans.donor_id = excluded.donor_id THEN task_plans.evidence_json END,
+         check_status = CASE WHEN task_plans.donor_id = excluded.donor_id THEN task_plans.check_status END,
+         updated_at = excluded.updated_at`,
+      [taskId, donorId, planJson, now],
+    )
+  }
+
+  async saveSubmissionRecord(taskId: string, donorId: string, evidenceJson: string, checkStatus: string | null, now: number) {
+    await this.sql.run(
+      `INSERT INTO task_plans (task_id, donor_id, plan_json, evidence_json, check_status, updated_at) VALUES (?, ?, NULL, ?, ?, ?)
+       ON CONFLICT(task_id) DO UPDATE SET evidence_json = excluded.evidence_json, check_status = excluded.check_status, updated_at = excluded.updated_at
+       WHERE task_plans.donor_id = excluded.donor_id`,
+      [taskId, donorId, evidenceJson, checkStatus, now],
+    )
+  }
+
+  async getPlanRecord(taskId: string, donorId: string) {
+    await this.ready
+    return await this.sql.get(`SELECT plan_json, evidence_json, check_status FROM task_plans WHERE task_id = ? AND donor_id = ?`, [taskId, donorId]) as
+      { plan_json: string | null; evidence_json: string | null; check_status: string | null } | undefined ?? null
+  }
+
+  async addTaskSignal(row: { id: string; taskId: string; kind: string; detail: string | null; url: string | null }, now: number) {
+    await this.sql.run(`INSERT INTO task_signals (id, task_id, kind, detail, url, created_at) VALUES (?, ?, ?, ?, ?, ?)`, [row.id, row.taskId, row.kind, row.detail, row.url, now])
+  }
+
+  async listTaskSignals(taskId: string) {
+    await this.ready
+    return await this.sql.all(`SELECT kind, detail, url, created_at FROM task_signals WHERE task_id = ? ORDER BY created_at DESC LIMIT 20`, [taskId]) as
+      { kind: string; detail: string | null; url: string | null; created_at: number }[]
+  }
+
+  // ---------- website accounts ----------
+
+  async findAccountByGithub(githubId: string) {
+    await this.ready
+    return await this.sql.get(`SELECT id, github_id, github_login, email FROM accounts WHERE github_id = ?`, [githubId]) as AccountRow | undefined ?? null
+  }
+
+  async findAccountByEmail(email: string) {
+    await this.ready
+    return await this.sql.get(`SELECT id, github_id, github_login, email FROM accounts WHERE email = ?`, [email]) as AccountRow | undefined ?? null
+  }
+
+  async getAccount(id: string) {
+    await this.ready
+    return await this.sql.get(`SELECT id, github_id, github_login, email FROM accounts WHERE id = ?`, [id]) as AccountRow | undefined ?? null
+  }
+
+  async insertAccount(row: AccountRow, now: number) {
+    await this.sql.run(
+      `INSERT INTO accounts (id, github_id, github_login, email, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      [row.id, row.github_id, row.github_login, row.email, now, now],
+    )
+  }
+
+  async updateAccountLogin(id: string, fields: { github_login?: string | null; email?: string | null }, now: number) {
+    await this.sql.run(
+      `UPDATE accounts SET last_login_at = ?, github_login = COALESCE(?, github_login), email = COALESCE(email, ?) WHERE id = ?`,
+      [now, fields.github_login ?? null, fields.email ?? null, id],
+    )
+  }
+
+  async linkAccountGithub(id: string, githubId: string, login: string) {
+    await this.sql.run(`UPDATE accounts SET github_id = ?, github_login = ? WHERE id = ? AND github_id IS NULL`, [githubId, login, id])
+  }
+
+  async insertAccountSession(idHash: string, accountId: string, now: number, expiresAt: number) {
+    await this.sql.run(`INSERT INTO account_sessions (id_hash, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)`, [idHash, accountId, now, expiresAt])
+  }
+
+  async findSessionAccount(idHash: string, now: number) {
+    await this.ready
+    const row = await this.sql.get(`SELECT account_id FROM account_sessions WHERE id_hash = ? AND expires_at > ?`, [idHash, now]) as { account_id: string } | undefined
+    return row?.account_id ?? null
+  }
+
+  async deleteAccountSession(idHash: string) {
+    await this.sql.run(`DELETE FROM account_sessions WHERE id_hash = ?`, [idHash])
+  }
+
+  async insertLoginLink(tokenHash: string, email: string, returnTo: string | null, now: number, expiresAt: number) {
+    await this.sql.run(
+      `INSERT INTO login_links (token_hash, email, return_to, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, ?, NULL)`,
+      [tokenHash, email, returnTo, now, expiresAt],
+    )
+  }
+
+  // Single use: the update succeeds once, for an unexpired link.
+  async useLoginLink(tokenHash: string, now: number) {
+    await this.ready
+    const row = await this.sql.get(`SELECT email, return_to FROM login_links WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?`, [tokenHash, now]) as { email: string; return_to: string | null } | undefined
+    if (!row) return null
+    const changed = await this.sql.run(`UPDATE login_links SET used_at = ? WHERE token_hash = ? AND used_at IS NULL`, [now, tokenHash])
+    return changed === 1 ? row : null
+  }
+
+  async loginLinkValid(tokenHash: string, now: number) {
+    await this.ready
+    return !!(await this.sql.get(`SELECT 1 AS ok FROM login_links WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?`, [tokenHash, now]))
+  }
+
+  async donorForAccount(accountId: string) {
+    await this.ready
+    const row = await this.sql.get(`SELECT id FROM donors WHERE account_id = ? ORDER BY created_at LIMIT 1`, [accountId]) as { id: string } | undefined
+    return row?.id ?? null
+  }
+
+  // Links a volunteer name to an account, only if it has no account yet.
+  async linkDonorToAccount(donorId: string, accountId: string) {
+    return await this.sql.run(`UPDATE donors SET account_id = ? WHERE id = ? AND account_id IS NULL`, [accountId, donorId])
+  }
+
+  async getSigninApp() {
+    await this.ready
+    return await this.sql.get(`SELECT client_id, client_secret_sealed, slug FROM signin_app WHERE id = 1`, []) as { client_id: string; client_secret_sealed: string; slug: string } | undefined ?? null
+  }
+
+  async saveSigninApp(row: { clientId: string; clientSecretSealed: string; slug: string }, now: number) {
+    await this.sql.run(
+      `INSERT INTO signin_app (id, client_id, client_secret_sealed, slug, created_at) VALUES (1, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET client_id = excluded.client_id, client_secret_sealed = excluded.client_secret_sealed, slug = excluded.slug`,
+      [row.clientId, row.clientSecretSealed, row.slug, now],
+    )
+  }
+
+  async listApplicationsFor(email: string | null, githubLogin: string | null) {
+    await this.ready
+    return await this.sql.all(
+      `SELECT id, created_at, org_name, github, repo_url, state FROM applications WHERE (? IS NOT NULL AND lower(email) = lower(?)) OR (? IS NOT NULL AND lower(repo_url) LIKE lower(?)) ORDER BY created_at DESC LIMIT 20`,
+      [email, email, githubLogin, githubLogin ? `%github.com/${githubLogin}/%` : null],
+    ) as { id: string; created_at: number; org_name: string; github: string; repo_url: string | null; state: string }[]
   }
 
   async findActiveDonorByTokenHash(tokenHash: string) {
@@ -1004,6 +1165,7 @@ function taskFromRow(row: TaskRow): TaskRecord {
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
     kind: row.kind === 'writing' ? 'writing' : 'code',
+    needsComputer: row.needs_computer === 1,
   }
 }
 
@@ -1061,6 +1223,7 @@ type SessionRow = {
   task_count: number
   completed: number
   status: string
+  has_computer?: number | null
 }
 
 function sessionFromRow(row: SessionRow): WorkSession {
@@ -1071,6 +1234,7 @@ function sessionFromRow(row: SessionRow): WorkSession {
     taskCount: Number(row.task_count),
     completed: Number(row.completed),
     status: row.status === 'done' || row.status === 'stopped' ? row.status : 'open',
+    hasComputer: row.has_computer !== 0,
   }
 }
 
@@ -1096,6 +1260,7 @@ export type WorkSession = {
   taskCount: number
   completed: number
   status: 'open' | 'done' | 'stopped'
+  hasComputer: boolean
 }
 
 function money(value: number): number {

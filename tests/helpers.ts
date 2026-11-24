@@ -86,6 +86,7 @@ export function setupBroker(options?: {
   hooks?: Partial<Record<ProviderId, FakeHooks>>
   pullRequests?: PullRequestOpener
   store?: SqliteStore
+  requirePlan?: boolean
 }): { broker: Broker; store: SqliteStore; dbPath: string; logs: string[] } {
   const dbPath = tempDbPath()
   const store = options?.store ?? openSqliteStore(dbPath, { maxAttempts: options?.maxAttempts ?? 3 })
@@ -106,6 +107,7 @@ export function setupBroker(options?: {
     leaseMs: options?.leaseMs ?? 60_000,
     logger,
     ...(options?.pullRequests ? { pullRequests: options.pullRequests } : {}),
+    ...(options?.requirePlan ? { requirePlan: true } : {}),
   })
   return { broker, store, dbPath, logs }
 }

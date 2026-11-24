@@ -124,6 +124,13 @@ export class Workspaces {
 
   async writeFile(donorId: string, taskId: string, path: string, content: string | null) {
     const { task } = await this.held(donorId, taskId)
+    if (this.deps.broker.requirePlan) {
+      const plan = await this.deps.broker.planFor(donorId, taskId)
+      if (!plan) throw new WorkspaceError('First call submit_plan: what you understood, the files you will change, your steps and how you will check.', 'plan_required')
+      if (!plan.files.some((allowed) => allowed === path || (allowed.endsWith('/') && path.startsWith(allowed)))) {
+        throw new WorkspaceError(`${path} is not in your plan (${plan.files.join(', ')}). If you need it, call submit_plan again with the updated plan.`, 'not_in_plan')
+      }
+    }
     if (!isEditable(task, path)) {
       throw new WorkspaceError(
         `This task only allows changes to: ${editablePaths(task).join(', ') || 'no files'}. ${path} is out of scope.`,
@@ -220,17 +227,21 @@ export class Workspaces {
     }
   }
 
-  async submit(donorId: string, taskId: string, summary: string) {
+  async submit(donorId: string, taskId: string, summary: string, evidence: unknown = []) {
     const { task, project } = await this.held(donorId, taskId)
     const patch = await this.diff(donorId, taskId)
     if (!patch.trim()) throw new WorkspaceError('There are no changes to submit yet.', 'no_changes')
+    let checkStatus: string | null = null
+    let checkOutput: string | null = null
     if (task.kind === 'code' && project.checks && this.deps.checks) {
       const latest = await this.deps.store.latestCheckRun(taskId)
       if (!latest || latest.status !== 'passed' || latest.workspace_hash !== (await this.workspaceHash(taskId))) {
         throw new WorkspaceError("The project's checks must pass on your latest changes before you submit. Call run_checks, then check_results.", 'checks_required')
       }
+      checkStatus = 'passed'
+      checkOutput = latest.output
     }
-    const result = await this.deps.broker.submitResult(donorId, taskId, { summary, patch })
+    const result = await this.deps.broker.submitResult(donorId, taskId, { summary, patch, evidence, checkStatus, checkOutput })
     if (result.ok) await this.deps.store.clearWorkspace(taskId)
     return result
   }
