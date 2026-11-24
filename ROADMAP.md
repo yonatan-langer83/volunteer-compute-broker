@@ -4,13 +4,14 @@ Last reviewed: 24 November 2026.
 
 ## Where it stands
 
-| Piece | Status |
-|---|---|
-| Broker code on GitHub (`main`) | Done. 53 tests pass, 4 live-provider checks skipped. |
-| Worker live at `volunteer.apishelf.dev` | Live, but still the Cursor build from 07:51. The fixes below deploy once `CLOUDFLARE_API_TOKEN` is set as a GitHub secret. |
-| D1 database `volunteer-broker` | Live. Migrations 0001–0003 applied. harbor-pantry registered with 5 tasks. 3 test donors. |
-| Test project `volunteer-compute-test` | Seed PR #1 open, CI green, now includes `volunteer-apply.yml`. |
-| Live MCP test from a real AI app | **Not done yet.** Nothing has been claimed, submitted and accepted. |
+**First live end-to-end run passed (24 November 2026).** A volunteer (Claude Code on a Claude Pro plan, Windows) connected over MCP, claimed `fix-overnight-hours`, did the work, ran the tests and submitted a diff. The GitHub App opened [PR #3](https://github.com/yonatan-langer83/volunteer-compute-test/pull/3) credited to the volunteer, CI passed, the maintainer merged it, and the broker marked the task done and counted it for the volunteer.
+
+What the live run caught and what was fixed:
+1. Task briefs had generic placeholders (`npm test`, `do: README.md`) that contradicted the instructions. The volunteer correctly refused. Briefs fixed; the broker now rejects a `do` list the instructions never mention.
+2. The broker trimmed the final newline off every diff, so `git apply` rejected all of them. Fixed.
+3. Accepting work needed an admin token and a terminal. Replaced by the GitHub App: merge = done, close = back to the pool.
+
+Still to test live: Gemini CLI and Grok as volunteers, a second project, a task with `dependsOn`, and a closed (rejected) PR.
 
 ## Fixed in this review
 
