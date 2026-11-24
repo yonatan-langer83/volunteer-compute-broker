@@ -179,7 +179,9 @@ export class Workspaces {
     const { task, project, reader, baseSha } = await this.held(donorId, taskId)
     if (task.kind === 'writing') return { status: 'not_needed' as const, message: 'This is a writing task. There are no automated checks: the organization reads the result.' }
     if (!project.checks) return { status: 'not_needed' as const, message: 'This project has no automated checks set up. Submit when the work meets the acceptance criteria.' }
-    if (!this.deps.checks) throw new WorkspaceError('Automated checks are not available right now.', 'checks_unavailable')
+    if (!this.deps.checks) {
+      return { status: 'not_available' as const, message: "The server's test machines are switched off for now. Check your change carefully against the acceptance criteria; the project's own tests will run on the pull request." }
+    }
     const latest = await this.deps.store.latestCheckRun(taskId)
     if (latest?.status === 'running' && this.now() - latest.created_at < 10 * 60 * 1000) {
       return { status: 'running' as const, runId: latest.id, message: 'Checks are already running. Call check_results in about 30 seconds.' }

@@ -46,6 +46,8 @@ export interface Env {
   OAUTH_KV: unknown
   OAUTH_PROVIDER: OAuthHelpers
   TEST_RUNNER?: ObjectNamespace
+  // "true" once the Cloudflare deploy token may create test machines (Containers).
+  CHECKS_ENABLED?: string
 }
 
 const STATIC = /^\/(site\.css|site\.js|favicon\.svg|og\.png|fonts\/[a-z0-9-]+\.woff2)$/
@@ -296,7 +298,7 @@ export class BrokerObject extends DurableObject<Env> {
       store,
       broker: this.cached,
       reader: (project) => this.reader(project),
-      checks: this.env.TEST_RUNNER ? containerCheckRunner(this.env.TEST_RUNNER as never) : null,
+      checks: this.env.CHECKS_ENABLED === 'true' && this.env.TEST_RUNNER ? containerCheckRunner(this.env.TEST_RUNNER as never) : null,
     })
     return this.cached
   }

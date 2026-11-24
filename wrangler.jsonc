@@ -12,7 +12,8 @@
     "run_worker_first": true
   },
   "vars": {
-    "TURNSTILE_SITE_KEY": "0x4AAAAAAGRAm-7JByD-t18O"
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAGRAm-7JByD-t18O",
+    "CHECKS_ENABLED": "false"
   },
   "routes": [
     {
@@ -32,12 +33,6 @@
     {
       "binding": "OAUTH_KV",
       "id": "da3568a541de4cb795d57ccff8312324"
-    }
-  ],
-  "containers": [
-    {
-      "class_name": "TestRunner",
-      "scheduling_policy": "durable_object"
     }
   ],
   "triggers": {
