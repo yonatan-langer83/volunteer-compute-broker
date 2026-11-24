@@ -167,3 +167,77 @@ describe('warning-sign scan', () => {
     expect(scanPatch('--- a/x\n+++ b/x\n@@ -1 +1 @@\n-eval(x)\n+const y = 2\n')).toEqual([])
   })
 })
+
+describe('handbook routines', () => {
+  const evidence = [{ criterion: 'tests', evidence: 'pass' }]
+  async function handIn(ctx: Awaited<ReturnType<typeof setup>>, donorId: string) {
+    await ctx.broker.requestWork(donorId, 1, 'small', false)
+    const claimed = await ctx.broker.claimNext(donorId)
+    expect(claimed.ok).toBe(true)
+    const taskId = (claimed as { taskId: string }).taskId
+    await ctx.broker.submitPlan(donorId, taskId, plan)
+    await ctx.workspaces.writeFile(donorId, taskId, 'pantry_shifts/shifts.py', fx('shifts.after.py'))
+    await ctx.workspaces.submit(donorId, taskId, 'Fixed', evidence)
+    return taskId
+  }
+
+  it('pauses a task handed back three times until its brief changes, and slows down a volunteer often turned down', async () => {
+    const ctx = await setup()
+    let taskId = ''
+    for (let i = 0; i < 3; i++) {
+      taskId = await handIn(ctx, ctx.donor.id)
+      await ctx.broker.rejectSubmission(taskId, `Not right yet (${i})`)
+    }
+    expect((await ctx.store.getTask(taskId))?.pausedReason).toContain('Handed back 3 times')
+    const other = await ctx.broker.registerMcpDonor({ name: 'bob', monthlyTasks: 5, acceptTerms: true })
+    await ctx.broker.requestWork(other.id, 1, 'small', false)
+    expect((await ctx.broker.listEligible(other.id)).map((t) => t.localId)).toEqual([])
+
+    const standing = await ctx.broker.requestWork(ctx.donor.id, 2, 'small', false)
+    expect(standing).toMatchObject({ ok: false, reason: 'small_tasks_only' })
+  })
+
+  it('stops new work for an organization with five changes waiting, and reminds reviewers after 7 days', async () => {
+    let now = Date.parse('2026-11-01T10:00:00Z')
+    const store = openSqliteStore(tempDbPath(), { maxAttempts: 3 })
+    const many = manifest.replace(/tasks:\n/, `tasks:\n${[1, 2, 3, 4, 5, 6].map((n) => `  - id: note-${n}
+    kind: writing
+    title: Write note ${n}
+    goal: Write a short note for the volunteers.
+    size: small
+    instructions: |
+      Write docs/note-${n}.md (new file) with two friendly sentences.
+      Keep it under 60 words.
+    acceptance: docs/note-${n}.md exists and has two sentences.
+    do: [docs/note-${n}.md (new file)]
+    don't: [Do not change code.]
+    deliverable: A unified diff adding docs/note-${n}.md.
+    estimatedCostUsd: 0.02
+`).join('')}`)
+    const { broker } = setupBroker({ store, requirePlan: true, now: () => now, pullRequests: { open: async (i) => `https://github.com/example/harbor-pantry/pull/${i.localId.slice(-1)}` } })
+    await broker.registerProject({ manifestPath: writeManifest(many) })
+    const workspaces = new Workspaces({ store, broker, reader: async () => reader(), checks: null, now: () => now })
+    for (let n = 1; n <= 5; n++) {
+      const donor = await broker.registerMcpDonor({ name: `v${n}`, monthlyTasks: 5, acceptTerms: true })
+      await broker.requestWork(donor.id, 1, 'small', false)
+      const target = (await broker.listEligible(donor.id)).find((t) => t.localId === `note-${n}`)!
+      expect((await broker.claim(donor.id, target.taskId)).ok).toBe(true)
+      await broker.submitPlan(donor.id, target.taskId, { ...plan, files: [`docs/note-${n}.md`] })
+      await workspaces.writeFile(donor.id, target.taskId, `docs/note-${n}.md`, 'Hello. Welcome.\n')
+      expect((await workspaces.submit(donor.id, target.taskId, 'Note', evidence)).ok).toBe(true)
+    }
+    const late = await broker.registerMcpDonor({ name: 'late', monthlyTasks: 5, acceptTerms: true })
+    await broker.requestWork(late.id, 1, 'small', false)
+    expect(await broker.listEligible(late.id)).toEqual([])
+
+    expect(await broker.reviewReminders()).toEqual([])
+    now += 8 * 86_400_000
+    const due = await broker.reviewReminders()
+    expect(due).toHaveLength(5)
+    expect(due[0]!.body).toContain('waited 7 days')
+    for (const d of due) await broker.markReminderSent(d.taskId, d.days)
+    expect(await broker.reviewReminders()).toEqual([])
+    now += 14 * 86_400_000
+    expect((await broker.reviewReminders())[0]!.body).toContain('waited 21 days')
+  })
+})

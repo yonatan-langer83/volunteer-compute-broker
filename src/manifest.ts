@@ -34,9 +34,13 @@ export type ManifestTask = {
 
 export type Manifest = {
   schemaVersion: 1
-  project: { name: string; github?: string; nonprofit: boolean; orgUrl?: string; checks?: ProjectChecks }
+  project: { name: string; github?: string; nonprofit: boolean; orgUrl?: string; checks?: ProjectChecks; cause?: Cause; summary?: string }
   tasks: ManifestTask[]
 }
+
+// What the organization works on. Used to group and filter the project directory.
+export const CAUSES = ['community', 'education', 'environment', 'food', 'health', 'human-rights', 'animals', 'arts-culture', 'open-source', 'other'] as const
+export type Cause = (typeof CAUSES)[number]
 
 export class ManifestError extends Error {
   constructor(message: string) {
@@ -109,6 +113,16 @@ export function validateManifest(document: unknown): Manifest {
       checks = { run, ...(setup ? { setup } : {}) }
     }
   }
+  let cause: Cause | undefined
+  if (project && project.cause != null) {
+    if (typeof project.cause === 'string' && (CAUSES as readonly string[]).includes(project.cause)) cause = project.cause as Cause
+    else errors.push(`project.cause must be one of: ${CAUSES.join(', ')}`)
+  }
+  let summary: string | undefined
+  if (project && project.summary != null) {
+    if (typeof project.summary === 'string' && project.summary.trim().length > 0 && project.summary.length <= 240) summary = project.summary.trim()
+    else errors.push('project.summary must be one sentence, up to 240 characters')
+  }
   if (!Array.isArray(document.tasks) || document.tasks.length === 0) {
     errors.push('tasks must be a non-empty list')
   }
@@ -136,7 +150,7 @@ export function validateManifest(document: unknown): Manifest {
   if (errors.length > 0) throw new ManifestError(errors.join('\n'))
   return {
     schemaVersion: 1,
-    project: { name, nonprofit, ...(github ? { github } : {}), ...(orgUrl ? { orgUrl } : {}), ...(checks ? { checks } : {}) },
+    project: { name, nonprofit, ...(github ? { github } : {}), ...(orgUrl ? { orgUrl } : {}), ...(checks ? { checks } : {}), ...(cause ? { cause } : {}), ...(summary ? { summary } : {}) },
     tasks,
   }
 }

@@ -12,6 +12,7 @@ import { isProviderId } from './types.js'
 type TaskRow = {
   kind?: string | null
   needs_computer?: number | null
+  paused_reason?: string | null
   id: string
   project_id: string
   local_id: string
@@ -63,6 +64,8 @@ type DonorRow = {
 
 type ProjectRow = {
   checks_json?: string | null
+  cause?: string | null
+  summary?: string | null
   id: string
   name: string
   github: string | null
@@ -75,6 +78,8 @@ type ProjectRow = {
 
 export type ProjectInsert = {
   checks?: { setup?: string; run: string } | null
+  cause?: string | null
+  summary?: string | null
   id: string
   name: string
   github: string | null
@@ -137,7 +142,7 @@ const TASK_COLUMNS = `
   scope_do, scope_dont, deliverable, size, provider_override,
   estimated_cost_usd, state, donor_id, lease_until, attempts, result,
   failure_reason, reserved_cost_usd, budget_period, submission_summary,
-  submission_url, submission_patch, safety_status, safety_flags, created_at, updated_at, kind, needs_computer
+  submission_url, submission_patch, safety_status, safety_flags, created_at, updated_at, kind, needs_computer, paused_reason
 `
 
 const DONOR_COLUMNS = `
@@ -146,7 +151,7 @@ const DONOR_COLUMNS = `
   terms_accepted_at, key_validated_at, created_at, handle
 `
 
-const PROJECT_COLUMNS = `id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json`
+const PROJECT_COLUMNS = `id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json, cause, summary`
 
 export type AccountRow = { id: string; github_id: string | null; github_login: string | null; email: string | null }
 
@@ -172,7 +177,7 @@ export class SqliteStore {
   async insertProject(project: ProjectInsert, tasks: TaskInsert[]) {
     await this.transaction(async () => {
       await this.sql.run(
-          `INSERT INTO projects (id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [project.id, project.name, project.github, project.orgUrl, project.nonprofit ? 1 : 0, project.repoPath, project.agentsMd, project.registeredAt, project.checks ? JSON.stringify(project.checks) : null])
+          `INSERT INTO projects (id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json, cause, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [project.id, project.name, project.github, project.orgUrl, project.nonprofit ? 1 : 0, project.repoPath, project.agentsMd, project.registeredAt, project.checks ? JSON.stringify(project.checks) : null, project.cause ?? null, project.summary ?? null])
       for (const task of tasks) await this.insertTaskRow(task)
       for (const task of tasks) {
         for (const dependency of task.dependsOn) {
@@ -201,11 +206,12 @@ export class SqliteStore {
 
   async updateProjectFromManifest(projectId: string, fields: {
     github: string | null; orgUrl: string | null; nonprofit: boolean; agentsMd: string | null; checks: { setup?: string; run: string } | null
+    cause?: string | null; summary?: string | null
   }) {
     await this.ready
     await this.sql.run(
-      `UPDATE projects SET github = ?, org_url = ?, nonprofit = ?, agents_md = ?, checks_json = ? WHERE id = ?`,
-      [fields.github, fields.orgUrl, fields.nonprofit ? 1 : 0, fields.agentsMd, fields.checks ? JSON.stringify(fields.checks) : null, projectId],
+      `UPDATE projects SET github = ?, org_url = ?, nonprofit = ?, agents_md = ?, checks_json = ?, cause = ?, summary = ? WHERE id = ?`,
+      [fields.github, fields.orgUrl, fields.nonprofit ? 1 : 0, fields.agentsMd, fields.checks ? JSON.stringify(fields.checks) : null, fields.cause ?? null, fields.summary ?? null, projectId],
     )
   }
 
@@ -227,7 +233,7 @@ export class SqliteStore {
     await this.ready
     const changed = await this.sql.run(
       `UPDATE tasks SET title = ?, goal = ?, instructions = ?, acceptance = ?, tests = ?, scope_do = ?, scope_dont = ?,
-         deliverable = ?, size = ?, estimated_cost_usd = ?, safety_status = ?, safety_flags = ?, kind = ?, needs_computer = ?
+         deliverable = ?, size = ?, estimated_cost_usd = ?, safety_status = ?, safety_flags = ?, kind = ?, needs_computer = ?, paused_reason = NULL
        WHERE id = ? AND state IN ('open', 'blocked')`,
       [task.title, task.goal, task.instructions, task.acceptance, task.tests, JSON.stringify(task.scopeDo), JSON.stringify(task.scopeDont),
         task.deliverable, task.size, task.estimatedCostUsd, task.safetyStatus, JSON.stringify(task.safetyFlags), task.kind ?? 'code', task.needsComputer ? 1 : 0, task.id],
@@ -314,7 +320,7 @@ export class SqliteStore {
   }
 
   async listOpenTasks() {
-    const rows = await this.sql.all(`SELECT ${TASK_COLUMNS} FROM tasks WHERE state = 'open' AND safety_status != 'flagged' ORDER BY created_at, id`, []) as unknown as TaskRow[]
+    const rows = await this.sql.all(`SELECT ${TASK_COLUMNS} FROM tasks WHERE state = 'open' AND safety_status != 'flagged' AND paused_reason IS NULL ORDER BY created_at, id`, []) as unknown as TaskRow[]
     return rows.map(taskFromRow)
   }
 
@@ -406,8 +412,8 @@ export class SqliteStore {
       await this.promoteReadyLocked(now)
       const sql =
         provider == null
-          ? `SELECT ${TASK_COLUMNS} FROM tasks WHERE state = 'open' AND safety_status != 'flagged' ORDER BY created_at, id`
-          : `SELECT ${TASK_COLUMNS} FROM tasks WHERE state = 'open' AND safety_status != 'flagged' AND (provider_override IS NULL OR provider_override = ?) ORDER BY created_at, id`
+          ? `SELECT ${TASK_COLUMNS} FROM tasks WHERE state = 'open' AND safety_status != 'flagged' AND paused_reason IS NULL ORDER BY created_at, id`
+          : `SELECT ${TASK_COLUMNS} FROM tasks WHERE state = 'open' AND safety_status != 'flagged' AND paused_reason IS NULL AND (provider_override IS NULL OR provider_override = ?) ORDER BY created_at, id`
       const rows = (provider == null ? await this.sql.all(sql, []) : await this.sql.all(sql, [provider])) as unknown as TaskRow[]
       return rows.map(taskFromRow)
     })
@@ -984,6 +990,49 @@ export class SqliteStore {
       { kind: string; detail: string | null; url: string | null; created_at: number }[]
   }
 
+  // ---------- outcomes and routines ----------
+
+  async recordOutcome(row: { id: string; taskId: string; donorId: string | null; outcome: string; reason: string | null }, now: number) {
+    await this.sql.run(`INSERT INTO task_outcomes (id, task_id, donor_id, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)`, [row.id, row.taskId, row.donorId, row.outcome, row.reason, now])
+  }
+
+  // Hand-backs since the brief last changed.
+  async returnsSinceBrief(taskId: string) {
+    await this.ready
+    const row = await this.sql.get(
+      `SELECT COUNT(*) AS n FROM task_outcomes WHERE task_id = ? AND outcome IN ('rejected', 'released')
+         AND created_at > COALESCE((SELECT MAX(created_at) FROM task_outcomes WHERE task_id = ? AND outcome = 'brief_changed'), 0)`,
+      [taskId, taskId],
+    ) as { n: number } | undefined
+    return Number(row?.n ?? 0)
+  }
+
+  async donorTrackRecord(donorId: string, since: number) {
+    await this.ready
+    const rows = await this.sql.all(
+      `SELECT outcome, COUNT(*) AS n FROM task_outcomes WHERE donor_id = ? AND created_at > ? GROUP BY outcome`,
+      [donorId, since],
+    ) as { outcome: string; n: number }[]
+    const count = (o: string) => Number(rows.find((r) => r.outcome === o)?.n ?? 0)
+    return { accepted: count('accepted'), rejected: count('rejected'), released: count('released'), expired: count('expired') }
+  }
+
+  async pauseTask(taskId: string, reason: string) {
+    return await this.sql.run(`UPDATE tasks SET paused_reason = ? WHERE id = ? AND state IN ('open', 'blocked')`, [reason, taskId])
+  }
+
+  async reviewCounts() {
+    await this.ready
+    const rows = await this.sql.all(`SELECT project_id, COUNT(*) AS n FROM tasks WHERE state = 'review' GROUP BY project_id`, []) as { project_id: string; n: number }[]
+    return new Map(rows.map((r) => [r.project_id, Number(r.n)]))
+  }
+
+  async tasksInReview() {
+    await this.ready
+    const rows = await this.sql.all(`SELECT ${TASK_COLUMNS} FROM tasks WHERE state = 'review' ORDER BY updated_at`, []) as unknown as TaskRow[]
+    return rows.map(taskFromRow)
+  }
+
   // ---------- website accounts ----------
 
   async findAccountByGithub(githubId: string) {
@@ -1166,6 +1215,7 @@ function taskFromRow(row: TaskRow): TaskRecord {
     updatedAt: Number(row.updated_at),
     kind: row.kind === 'writing' ? 'writing' : 'code',
     needsComputer: row.needs_computer === 1,
+    pausedReason: row.paused_reason ?? null,
   }
 }
 
@@ -1203,6 +1253,8 @@ function projectFromRow(row: ProjectRow): ProjectRecord {
     agentsMd: row.agents_md,
     registeredAt: Number(row.registered_at),
     checks: parseChecks(row.checks_json),
+    cause: row.cause ?? null,
+    summary: row.summary ?? null,
   }
 }
 

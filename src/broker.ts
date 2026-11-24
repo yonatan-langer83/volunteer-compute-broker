@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { briefFingerprint, canonicalBrief, patchPaths, pullRequestRecord, scanPatch, validateEvidence, validatePlan, type Plan } from './contribution.js'
 import { editablePaths, isEditable } from './workspace.js'
+import { briefKey, PAUSED_FOR_BRIEF, POLICY, standing } from './routines.js'
 
 import { budgetPeriod, compareClaimable, explainTaskFit, placementBlock, supportsProject } from './budget.js'
 import { publicHandle } from './handle.js'
@@ -177,6 +178,8 @@ export class Broker {
         agentsMd: input.agentsMd,
         registeredAt: now,
         checks: manifest.project.checks ?? null,
+        cause: manifest.project.cause ?? null,
+        summary: manifest.project.summary ?? null,
       },
       tasks,
     )
@@ -207,6 +210,8 @@ export class Broker {
       nonprofit: input.manifest.project.nonprofit,
       agentsMd: input.agentsMd,
       checks: input.manifest.project.checks ?? null,
+      cause: input.manifest.project.cause ?? null,
+      summary: input.manifest.project.summary ?? null,
     })
     const existing = new Map((await this.store.listTasks(project.id)).map((task) => [task.id, task]))
     const built = this.buildTasks(project.id, input.manifest, input.agentsMd, this.now())
@@ -218,7 +223,13 @@ export class Broker {
     let updated = 0
     for (const task of built) {
       const current = existing.get(task.id)
-      if (current && (current.state === 'open' || current.state === 'blocked') && await this.store.updateOpenTaskBrief(task)) updated += 1
+      if (!current || (current.state !== 'open' && current.state !== 'blocked')) continue
+      // Only a real change counts: it reopens a paused task and restarts its hand-back count.
+      if (briefKey(current) === briefKey(task)) continue
+      if (await this.store.updateOpenTaskBrief(task)) {
+        updated += 1
+        await this.store.recordOutcome({ id: randomUUID(), taskId: task.id, donorId: null, outcome: 'brief_changed', reason: null }, this.now())
+      }
     }
     this.logger.info(`project ${project.id} synced: ${added.length} added, ${updated} updated`)
     return { project: project.name, added: added.map((t) => t.localId), updated }
@@ -483,6 +494,8 @@ export class Broker {
     if (project && !supportsProject(await this.store.supportNames(donorId), project.name)) {
       return { ok: false, reason: 'project_not_supported' }
     }
+    if (existing.pausedReason) return { ok: false, reason: 'task_paused' }
+    if (((await this.store.reviewCounts()).get(existing.projectId) ?? 0) >= POLICY.reviewCap) return { ok: false, reason: 'organization_review_backlog' }
     const donor = await this.store.getDonor(donorId)
     if (donor?.kind === 'mcp') {
       const gate = await this.sessionGate(donorId, existing.size)
@@ -641,9 +654,11 @@ export class Broker {
     const supported = await this.store.supportNames(donorId)
     const session = donor.kind === 'mcp' ? await this.store.getOpenSession(donorId) : null
     if (donor.kind === 'mcp' && !session) return []
+    const reviewCounts = await this.store.reviewCounts()
     const tasks = (await this.store.listOpenForDonor(donor.kind === 'mcp' ? null : donor.provider, now)).filter((task) => {
       if (session && task.size !== session.size) return false
       if (session && !session.hasComputer && task.needsComputer) return false
+      if ((reviewCounts.get(task.projectId) ?? 0) >= POLICY.reviewCap) return false
       const project = projects.get(task.projectId)
       return (
         explainTaskFit({
@@ -874,17 +889,51 @@ export class Broker {
     return parts.join(' ').slice(0, 500)
   }
 
+  // Pull requests nobody has reviewed get a friendly reminder after 7 and 21
+  // days. Returns what to post; the caller posts it on GitHub.
+  async reviewReminders(): Promise<{ taskId: string; url: string; body: string; days: number }[]> {
+    const due: { taskId: string; url: string; body: string; days: number }[] = []
+    for (const task of await this.store.tasksInReview()) {
+      if (!task.submissionUrl) continue
+      const age = (this.now() - task.updatedAt) / 86_400_000
+      const sent = new Set((await this.store.listTaskSignals(task.id)).map((s) => s.kind))
+      for (const days of [...POLICY.reviewReminderDays].reverse()) {
+        if (age < days) continue
+        if (sent.has(`review_reminder_${days}`)) break
+        const body = days === POLICY.reviewReminderDays[0]
+          ? `This volunteer change has waited ${days} days for review. When you have a moment: merge it if it is right, or request changes and close it, so the task goes back to the pool with your feedback. The review checklist is in the description above.`
+          : `This change has now waited ${days} days. While it waits, the task stays locked and the volunteer's time is on hold. Please merge it or close it. If you can't review volunteer work for a while, tell us and we will pause your tasks.`
+        due.push({ taskId: task.id, url: task.submissionUrl, body, days })
+        break
+      }
+    }
+    return due
+  }
+
+  async markReminderSent(taskId: string, days: number) {
+    await this.store.addTaskSignal({ id: randomUUID(), taskId, kind: `review_reminder_${days}`, detail: null, url: null }, this.now())
+  }
+
   async acceptSubmission(taskId: string) {
+    const before = await this.store.getTask(taskId)
     const result = await this.store.accept(taskId, this.now())
-    if (result.ok) this.logger.info(`task ${taskId} accepted`)
+    if (result.ok) {
+      this.logger.info(`task ${taskId} accepted`)
+      await this.store.recordOutcome({ id: randomUUID(), taskId, donorId: before?.donorId ?? null, outcome: 'accepted', reason: null }, this.now())
+    }
     return result
   }
 
   async rejectSubmission(taskId: string, reason: string) {
     const clean = reason.trim().slice(0, 500)
     if (!clean) return { ok: false, reason: 'reason_required' }
+    const before = await this.store.getTask(taskId)
     const result = await this.store.reject(taskId, clean, this.now())
-    if (result.ok) this.logger.info(`task ${taskId} rejected`)
+    if (result.ok) {
+      this.logger.info(`task ${taskId} rejected`)
+      await this.store.recordOutcome({ id: randomUUID(), taskId, donorId: before?.donorId ?? null, outcome: 'rejected', reason: clean }, this.now())
+      await this.pauseIfReturnedTooOften(taskId)
+    }
     return result
   }
 
@@ -918,8 +967,19 @@ export class Broker {
   async release(donorId: string, taskId: string, reason?: string) {
     const clean = reason?.trim().slice(0, 500)
     const result = await this.store.release(taskId, donorId, this.now(), clean || undefined)
-    if (result.ok) this.logger.info(`task ${taskId} released by donor ${donorId}`)
+    if (result.ok) {
+      this.logger.info(`task ${taskId} released by donor ${donorId}`)
+      const stopped = !clean || clean === 'donor stopped the session'
+      await this.store.recordOutcome({ id: randomUUID(), taskId, donorId, outcome: stopped ? 'stopped' : 'released', reason: clean || null }, this.now())
+      if (!stopped) await this.pauseIfReturnedTooOften(taskId)
+    }
     return result
+  }
+
+  private async pauseIfReturnedTooOften(taskId: string) {
+    if ((await this.store.returnsSinceBrief(taskId)) >= POLICY.returnsBeforePause) {
+      if (await this.store.pauseTask(taskId, PAUSED_FOR_BRIEF)) this.logger.info(`task ${taskId} paused for a better brief`)
+    }
   }
 
   async requestWork(donorId: string, count: number, size: string, hasComputer = true) {
@@ -930,6 +990,11 @@ export class Broker {
     if (!donor) return { ok: false as const, reason: 'donor_not_found' }
     if (donor.kind !== 'mcp') return { ok: false as const, reason: 'not_mcp_donor' }
     if (await this.store.heldTask(donorId)) return { ok: false as const, reason: 'already_holding' }
+    const record = standing(await this.store.donorTrackRecord(donorId, this.now() - POLICY.trackWindowMs))
+    if (record.level === 'paused') return { ok: false as const, reason: 'volunteer_paused', message: record.message }
+    if (record.level === 'small-only' && (size !== 'small' || count > 1)) {
+      return { ok: false as const, reason: 'small_tasks_only', message: `${record.message} Ask for count 1, size small.` }
+    }
     const budget = donor.monthlyTaskBudget ?? 0
     if (donor.spentTasks + donor.reservedTasks + count > budget) return { ok: false as const, reason: 'task_budget_exceeded' }
     const now = this.now()

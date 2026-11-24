@@ -8,7 +8,9 @@ CREATE TABLE IF NOT EXISTS projects (
   repo_path TEXT NOT NULL,
   agents_md TEXT,
   registered_at INTEGER NOT NULL,
-  checks_json TEXT
+  checks_json TEXT,
+  cause TEXT,
+  summary TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -43,6 +45,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at INTEGER NOT NULL,
   kind TEXT NOT NULL DEFAULT 'code',
   needs_computer INTEGER NOT NULL DEFAULT 0,
+  paused_reason TEXT,
   UNIQUE (project_id, local_id)
 );
 
@@ -248,4 +251,15 @@ CREATE TABLE IF NOT EXISTS task_signals (
 );
 
 CREATE INDEX IF NOT EXISTS task_signals_task ON task_signals(task_id, created_at);
+
+CREATE TABLE IF NOT EXISTS task_outcomes (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  donor_id TEXT,
+  outcome TEXT NOT NULL,
+  reason TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS task_outcomes_task ON task_outcomes(task_id, created_at);
+CREATE INDEX IF NOT EXISTS task_outcomes_donor ON task_outcomes(donor_id, created_at);
 `

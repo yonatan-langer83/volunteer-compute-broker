@@ -309,7 +309,9 @@ export class BrokerObject extends DurableObject<Env> {
     }
     const url = new URL(request.url)
     if (url.pathname === '/internal/volunteer' && request.method === 'POST') return this.createVolunteer(broker, request)
-    if (url.pathname === '/internal/sync' && request.method === 'POST') return Response.json(await this.syncProjects(broker))
+    if (url.pathname === '/internal/sync' && request.method === 'POST') {
+      return Response.json({ ...(await this.syncProjects(broker)), reminders: await this.sendReviewReminders(broker) })
+    }
     if (url.pathname.startsWith('/admin')) return handleAdmin(broker, request, this.env.ADMIN_TOKEN ?? '')
     if (url.pathname === '/volunteer/join' && request.method === 'POST') {
       return handleJoin(siteDeps(this.env, this.store!), broker, request)
@@ -347,6 +349,25 @@ export class BrokerObject extends DurableObject<Env> {
       readFile: (sha, path) => app.readFile(repo.owner, repo.repo, sha, path),
       tarballUrl: (sha) => app.tarballUrl(repo.owner, repo.repo, sha),
     }
+  }
+
+  // Handbook routine: remind organizations of volunteer pull requests waiting for review.
+  private async sendReviewReminders(broker: Broker) {
+    const creds = await loadAppCredentials(this.store!, loadMasterKey(this.env.BROKER_MASTER_KEY))
+    if (!creds) return []
+    const app = new GitHubApp(creds)
+    const sent: string[] = []
+    for (const due of await broker.reviewReminders()) {
+      try {
+        if (await app.commentOnPullRequest(due.url, due.body)) {
+          await broker.markReminderSent(due.taskId, due.days)
+          sent.push(due.url)
+        }
+      } catch {
+        // Try again at the next run.
+      }
+    }
+    return sent
   }
 
   private async syncProjects(broker: Broker) {

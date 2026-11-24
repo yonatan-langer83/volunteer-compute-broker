@@ -15,6 +15,8 @@ export type PublicTask = {
 
 export type PublicProject = {
   name: string
+  cause: string | null
+  summary: string | null
   nonprofit: boolean
   orgUrl: string | null
   github: string | null
@@ -72,6 +74,8 @@ export async function loadPublicBoard(store: SqliteStore): Promise<PublicBoard> 
     })
     listed.push({
       name: project.name,
+      cause: project.cause,
+      summary: project.summary,
       nonprofit: project.nonprofit,
       orgUrl: project.orgUrl,
       github: project.github,

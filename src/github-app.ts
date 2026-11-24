@@ -207,6 +207,15 @@ export class GitHubApp {
     }
   }
 
+  async commentOnPullRequest(url: string, body: string): Promise<boolean> {
+    const match = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/)
+    if (!match) return false
+    const [, owner, repo, number] = match
+    const token = await this.installationToken(owner!, repo!)
+    await this.call(token, 'POST', `/repos/${owner}/${repo}/issues/${number}/comments`, { body })
+    return true
+  }
+
   async pullRequestBody(owner: string, repo: string, number: number): Promise<{ body: string | null; user: string; url: string } | null> {
     const token = await this.installationToken(owner, repo)
     try {

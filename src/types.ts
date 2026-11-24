@@ -45,6 +45,8 @@ export type ProjectRecord = {
   agentsMd: string | null
   registeredAt: number
   checks: { setup?: string; run: string } | null
+  cause: string | null
+  summary: string | null
 }
 
 export type TaskRecord = {
@@ -53,6 +55,8 @@ export type TaskRecord = {
   localId: string
   kind: 'code' | 'writing'
   needsComputer: boolean
+  // Set when a routine took the task off the board (e.g. handed back 3 times)
+  pausedReason: string | null
   title: string
   goal: string
   instructions: string
