@@ -83,3 +83,12 @@ tasks:
     await expect(broker.registerProject({ manifestPath: writeManifest(bad) })).rejects.toThrow(/do names README.md/)
   })
 })
+
+describe('submitted patches', () => {
+  it('stores a diff that ends with a newline so git apply accepts it', async () => {
+    const { broker, store, donor, claim } = await claimedTask()
+    await broker.submitResult(donor.id, claim.taskId, { summary: 'done', patch: '--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b' })
+    const task = await store.getTask(claim.taskId)
+    expect(task?.submissionPatch?.endsWith('+b\n')).toBe(true)
+  })
+})

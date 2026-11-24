@@ -663,7 +663,10 @@ export class Broker {
     const summary = input.summary.trim()
     if (summary.length === 0 || summary.length > 2_000) return { ok: false, reason: 'summary_invalid' }
     const prUrl = input.prUrl?.trim() || null
-    const patch = input.patch?.trim() || null
+    // Keep the diff byte-exact apart from a guaranteed final newline: git apply
+    // rejects a patch whose last line has no newline as corrupt.
+    const rawPatch = input.patch && input.patch.trim() ? input.patch.replace(/\s+$/, '') : null
+    const patch = rawPatch ? `${rawPatch}\n` : null
     if (!prUrl && !patch) return { ok: false, reason: 'submission_empty' }
     if (prUrl && !/^https?:\/\/\S{1,500}$/.test(prUrl)) return { ok: false, reason: 'pr_url_invalid' }
     if (patch && patch.length > 100_000) return { ok: false, reason: 'patch_too_large' }
