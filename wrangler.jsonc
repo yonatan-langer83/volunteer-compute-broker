@@ -13,7 +13,7 @@
   },
   "vars": {
     "TURNSTILE_SITE_KEY": "0x4AAAAAAGRAm-7JByD-t18O",
-    "CHECKS_ENABLED": "true"
+    "CHECKS_ENABLED": "false"
   },
   "routes": [
     {
@@ -38,12 +38,6 @@
   "triggers": {
     "crons": ["*/15 * * * *"]
   },
-  "containers": [
-    {
-      "class_name": "TestRunner",
-      "scheduling_policy": "durable_object"
-    }
-  ],
   "durable_objects": {
     "bindings": [
       {
