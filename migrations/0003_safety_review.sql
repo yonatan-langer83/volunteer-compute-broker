@@ -1,0 +1,2 @@
+ALTER TABLE tasks ADD COLUMN safety_status TEXT NOT NULL DEFAULT 'clear';
+ALTER TABLE tasks ADD COLUMN safety_flags TEXT NOT NULL DEFAULT '[]';

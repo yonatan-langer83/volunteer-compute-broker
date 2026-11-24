@@ -1,0 +1,24 @@
+schemaVersion: 1
+project:
+  name: example-project
+  github: https://github.com/example/example-project
+  nonprofit: true
+  orgUrl: https://example.org/example-project
+tasks:
+  - id: readme-audience
+    title: Say who the project is for
+    goal: Add one sentence to the README that names the people the project is for.
+    instructions: |
+      Open README.md.
+      Add one sentence under the title that names the audience.
+    acceptance: README.md contains one new sentence naming the audience, and node --test exits 0.
+    tests: |
+      node --test
+    do:
+      - README.md
+    don't:
+      - Do not add a dependency.
+      - Do not edit files other than README.md.
+    deliverable: A unified diff that changes only README.md.
+    size: small
+    estimatedCostUsd: 0.04

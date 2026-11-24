@@ -1,0 +1,81 @@
+schemaVersion: 1
+project:
+  name: leaflet-docs
+  github: https://github.com/example/leaflet-docs
+  nonprofit: true
+  orgUrl: https://example.org/leaflet-docs
+tasks:
+  - id: inventory
+    title: List the public modules
+    instructions: |
+      List the public modules in this repository as a short bullet list.
+      Do not change any files.
+    acceptance: >
+      Three or more bullets, each naming one module and one sentence of what it
+      does.
+    estimatedCostUsd: 0.02
+    goal: Complete List the public modules within the named files.
+    tests: npm test
+    do:
+      - README.md
+    don't:
+      - Do not add a dependency.
+    deliverable: A unified diff of the files named in do.
+    size: small
+  - id: license-note
+    title: Summarize the license obligations
+    provider: openai
+    instructions: |-
+      Summarize what a contributor must do to comply with the project license.
+      Stop when the acceptance check passes.
+    acceptance: >
+      At most 80 words, mentions attribution, and does not give legal advice as
+      a law firm.
+    estimatedCostUsd: 0.02
+    goal: Complete Summarize the license obligations within the named files.
+    tests: npm test
+    do:
+      - README.md
+    don't:
+      - Do not add a dependency.
+    deliverable: A unified diff of the files named in do.
+    size: small
+  - id: readme-section
+    title: Draft a README section from the inventory
+    dependsOn:
+      - inventory
+    instructions: >-
+      Using the module inventory, draft a section of about 120 words describing
+      the repo.
+
+      Stop when the acceptance check passes.
+    acceptance: |
+      One section that mentions every module from the inventory.
+    estimatedCostUsd: 0.03
+    goal: Complete Draft a README section from the inventory within the named files.
+    tests: npm test
+    do:
+      - README.md
+    don't:
+      - Do not add a dependency.
+    deliverable: A unified diff of the files named in do.
+    size: small
+  - id: release-checklist
+    title: Write a release checklist
+    dependsOn:
+      - readme-section
+      - license-note
+    instructions: |-
+      Write a release checklist that includes docs and license checks.
+      Stop when the acceptance check passes.
+    acceptance: >
+      A numbered checklist of at least 4 steps covering docs, license, and tests.
+    estimatedCostUsd: 0.02
+    goal: Complete Write a release checklist within the named files.
+    tests: npm test
+    do:
+      - README.md
+    don't:
+      - Do not add a dependency.
+    deliverable: A unified diff of the files named in do.
+    size: small

@@ -1,0 +1,48 @@
+name: Open a volunteer pull request
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * *"
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  open:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply one accepted patch and open a pull request
+        env:
+          PROJECT_NAME: example-project
+          BROKER_ORIGIN: https://volunteer.apishelf.dev
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - << 'PY'
+          import json, os, subprocess, urllib.request
+          origin = os.environ["BROKER_ORIGIN"].rstrip("/")
+          name = os.environ["PROJECT_NAME"]
+          with urllib.request.urlopen(origin + "/public.json") as response:
+              board = json.load(response)
+          project = next((item for item in board["projects"] if item["name"] == name), None)
+          if not project:
+              raise SystemExit(f"no project named {name}")
+          task = next((item for item in project["tasks"] if item["state"] == "done" and item.get("patchPath") and not item.get("prUrl")), None)
+          if not task:
+              print("no accepted patch waiting for a pull request")
+              raise SystemExit(0)
+          patch_url = origin + task["patchPath"]
+          with urllib.request.urlopen(patch_url) as response:
+              patch = response.read()
+          branch = "volunteer/" + task["localId"]
+          subprocess.check_call(["git", "checkout", "-B", branch])
+          applied = subprocess.run(["git", "apply", "-"], input=patch)
+          if applied.returncode != 0:
+              raise SystemExit("git apply failed")
+          subprocess.check_call(["git", "config", "user.email", "volunteer-bot@users.noreply.github.com"])
+          subprocess.check_call(["git", "config", "user.name", "volunteer"])
+          subprocess.check_call(["git", "add", "-A"])
+          subprocess.check_call(["git", "commit", "-m", f"[{task['localId']}] {task['title']}"])
+          subprocess.check_call(["git", "push", "--force-with-lease", "-u", "origin", branch])
+          body = "Opened from an accepted volunteer diff.\n\nRecord it with:\n\n```\nnpm run cli -- record-pr --task " + task["id"] + " --pr <pull-request-url>\n```\n"
+          subprocess.check_call(["gh", "pr", "create", "--title", f"[{task['localId']}] {task['title']}", "--body", body])
+          PY
