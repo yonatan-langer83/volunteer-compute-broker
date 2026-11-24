@@ -546,7 +546,7 @@ export function signinAppManifest(origin: string) {
     redirect_url: `${origin}/setup/signin/callback`,
     public: true,
     hook_attributes: { url: `${origin}/github/webhook`, active: false },
-    default_permissions: { email_addresses: 'read' },
+    default_permissions: { emails: 'read' },
     default_events: [],
   }
 }
