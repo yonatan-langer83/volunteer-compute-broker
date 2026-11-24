@@ -42,6 +42,11 @@ jobs:
       - name: Apply database migrations
         run: npx wrangler d1 migrations apply volunteer-broker --remote
       - name: Deploy the Worker
-        run: npx wrangler deploy
+        run: |
+          npx wrangler deploy || {
+            echo "Deploy failed. Container details from the wrangler log:"
+            grep -ih -B2 -A12 'container\|applications' ~/.config/.wrangler/logs/*.log | grep -v -i 'authorization' | tail -120
+            exit 1
+          }
       - name: Check the live site
         run: curl -fsS https://volunteer.apishelf.dev/public.json > /dev/null
