@@ -201,6 +201,18 @@ function parseTask(entry: unknown, index: number, errors: string[]): ManifestTas
   } else {
     estimatedCostUsd = entry.estimatedCostUsd
   }
+  // A file a volunteer may edit must be one the instructions actually talk
+  // about. This catches briefs whose do list was filled in generically and
+  // contradicts the instructions (the harbor-pantry test hit exactly that).
+  if (scopeDo && instructions) {
+    const brief = `${instructions}\n${acceptance}`
+    for (const item of scopeDo) {
+      const path = item.split(/\s+\(/)[0]!.trim()
+      if (/[./]/.test(path) && !brief.includes(path)) {
+        errors.push(`${label}.do names ${path}, but the instructions and acceptance never mention it`)
+      }
+    }
+  }
   const dependsOn: string[] = []
   if (entry.dependsOn != null) {
     if (!Array.isArray(entry.dependsOn) || entry.dependsOn.some((item) => typeof item !== 'string')) {

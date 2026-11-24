@@ -53,7 +53,7 @@ export function completeManifest(body: string): string {
       task.acceptance = 'The change matches the task and the test command exits 0.'
     }
     if (task.tests == null) task.tests = 'npm test'
-    if (task.do == null) task.do = ['README.md']
+    if (task.do == null) task.do = ['the files the instructions name']
     if (task["don't"] == null && task.dont == null) task["don't"] = ['Do not add a dependency.']
     if (typeof task.deliverable !== 'string') task.deliverable = 'A unified diff of the files named in do.'
     if (typeof task.size !== 'string') {

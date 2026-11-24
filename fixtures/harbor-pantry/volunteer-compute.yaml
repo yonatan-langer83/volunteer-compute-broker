@@ -51,34 +51,35 @@ tasks:
       No dependency was added. No file outside `pantry_shifts/shifts.py`
       and `tests/test_shifts.py` changed.
     estimatedCostUsd: 0.08
-    goal: Complete Count overnight shifts forward within the named files.
-    tests: npm test
-    do:
-      - README.md
-    don't:
-      - Do not add a dependency.
-    deliverable: A unified diff of the files named in do.
+    goal: Make shift_hours count shifts that cross midnight forward, so 21:00-01:00 is 4.0 hours.
     size: small
+    tests:
+      - "git clone https://github.com/yonatan-langer83/volunteer-compute-test && cd volunteer-compute-test"
+      - "python -m pip install -e \".[dev]\""
+      - "python -m pytest"
+    do:
+      - pantry_shifts/shifts.py
+      - tests/test_shifts.py
+    don't:
+      - "Do not treat equal start and end times as 24 hours."
+      - "Do not add a dependency."
+      - "Do not edit AGENTS.md, README.md (unless named in do), volunteer-compute.yaml or anything in .github/."
+      - "Do not open a pull request yourself. Submit the diff with submit_result; the project opens the pull request."
+    deliverable: "One unified diff (git diff) of only the files in do, submitted with submit_result, plus a summary that restates the acceptance criteria and pastes the full python -m pytest output."
+
   - id: add-overlap-detection
     title: Detect double-booked volunteers
-    instructions: >
+    instructions: |
       Add same-day double-booking detection. Two volunteers may work the
-
       same hours. One volunteer may not.
 
-
       Touch only `pantry_shifts/schedule.py` and a new file
-
       `tests/test_overlaps.py`. Do not change `validate_schedule`. Do not
-
       change `pantry_shifts/shifts.py`.
-
 
       Add these functions to `pantry_shifts/schedule.py`:
 
-
       `shifts_overlap(left: Shift, right: Shift) -> bool`
-
       - Compare volunteer names with `strip()` and `casefold()`.
         `Ada Lovelace` and `  ada lovelace` are the same person.
         Different people never overlap.
@@ -92,44 +93,28 @@ tasks:
         `ValueError("shift must start and end on the same day")`.
 
       `find_overlaps(shifts: list[Shift]) -> list[tuple[int, int]]`
-
       - If any shift has end minutes <= start minutes, raise the same
         `ValueError` and return nothing.
       - Otherwise return every pair of 0-based indexes `(i, j)` with
         `i < j` whose shifts overlap, ordered by `i` then `j`.
       - An empty list and a single same-day shift return `[]`.
 
-
       Keep the minute conversion private to this module. Overnight shifts
-
       stay out of scope: callers get `ValueError`.
 
-
       Cover all of the following in `tests/test_overlaps.py` with these
-
       inputs (roles can be any allowed role; times are same-day unless
-
       noted):
 
-
-      - `Ada Lovelace` 09:00-12:00 and `Grace Hopper` 09:00-12:00 do not
-      overlap.
-
+      - `Ada Lovelace` 09:00-12:00 and `Grace Hopper` 09:00-12:00 do not overlap.
       - `Ada Lovelace` 09:00-12:00 and `Ada Lovelace` 11:00-14:00 overlap.
-
       - `Ada Lovelace` 09:00-15:00 and `Ada Lovelace` 11:00-13:00 overlap.
-
-      - `Ada Lovelace` 09:00-12:00 and `Ada Lovelace` 12:00-15:00 do not
-      overlap.
-
+      - `Ada Lovelace` 09:00-12:00 and `Ada Lovelace` 12:00-15:00 do not overlap.
       - `Ada Lovelace` 09:00-12:00 and `Ada Lovelace` 09:00-12:00 overlap.
-
       - `Ada Lovelace` 09:00-12:00 and `  ada lovelace ` 09:00-12:00 overlap.
-
       - These three shifts, in order: Ada 09:00-11:00, Ada 13:00-15:00,
         Ada 10:00-14:00. `find_overlaps` returns `[(0, 2), (1, 2)]`.
       - `find_overlaps([])` and a one-shift list return `[]`.
-
       - `Sam Rivera-Cole` closer 21:00-01:00 raises
         `ValueError` with message `shift must start and end on the same day`
         from both `shifts_overlap` (paired with any same-day shift) and
@@ -143,14 +128,23 @@ tasks:
       No dependency was added. No file other than `pantry_shifts/schedule.py`
       and `tests/test_overlaps.py` changed.
     estimatedCostUsd: 0.28
-    goal: Complete Detect double-booked volunteers within the named files.
-    tests: npm test
-    do:
-      - README.md
-    don't:
-      - Do not add a dependency.
-    deliverable: A unified diff of the files named in do.
+    goal: Add find_overlaps so the pantry can see when one volunteer is double-booked on the same day.
     size: medium
+    tests:
+      - "git clone https://github.com/yonatan-langer83/volunteer-compute-test && cd volunteer-compute-test"
+      - "python -m pip install -e \".[dev]\""
+      - "python -m pytest"
+    do:
+      - pantry_shifts/schedule.py
+      - tests/test_overlaps.py (new file)
+    don't:
+      - "Do not change validate_schedule."
+      - "Do not change pantry_shifts/shifts.py."
+      - "Do not add a dependency."
+      - "Do not edit AGENTS.md, README.md (unless named in do), volunteer-compute.yaml or anything in .github/."
+      - "Do not open a pull request yourself. Submit the diff with submit_result; the project opens the pull request."
+    deliverable: "One unified diff (git diff) of only the files in do, submitted with submit_result, plus a summary that restates the acceptance criteria and pastes the full python -m pytest output."
+
   - id: document-shift-rules
     title: Document the shift rules
     instructions: |
@@ -171,7 +165,7 @@ tasks:
       - Allowed roles are closer, driver, intake, and sorter.
       - Start and end must sit on a 15-minute boundary, and seconds must be 0.
       - Length must be greater than 0 hours and at most 8 hours.
-      - When the end clock is earlier than its start clock, the shift crosses
+      - When the end clock is earlier than the start clock, the shift crosses
         midnight and the length is the forward span. Equal clock times are
         0 hours and are invalid.
       - The midnight span is the intended rule. The code still has the bug
@@ -187,18 +181,24 @@ tasks:
       bug is still open.
       No other file changed. `python -m pytest` still exits 0.
     estimatedCostUsd: 0.03
-    goal: Complete Document the shift rules within the named files.
-    tests: npm test
+    goal: Explain the shift rules in README.md for pantry coordinators who do not read code.
+    size: small
+    tests:
+      - "git clone https://github.com/yonatan-langer83/volunteer-compute-test && cd volunteer-compute-test"
+      - "python -m pip install -e \".[dev]\""
+      - "python -m pytest"
     do:
       - README.md
     don't:
-      - Do not add a dependency.
-    deliverable: A unified diff of the files named in do.
-    size: small
+      - "Do not change any code or tests."
+      - "Do not add a dependency."
+      - "Do not edit AGENTS.md, README.md (unless named in do), volunteer-compute.yaml or anything in .github/."
+      - "Do not open a pull request yourself. Submit the diff with submit_result; the project opens the pull request."
+    deliverable: "One unified diff (git diff) of only the files in do, submitted with submit_result, plus a summary that restates the acceptance criteria and pastes the full python -m pytest output."
+
   - id: report-schedule-overlaps
     title: Report overlaps on a schedule
-    dependsOn:
-      - add-overlap-detection
+    dependsOn: [add-overlap-detection]
     instructions: |
       `add-overlap-detection` is merged. `pantry_shifts/schedule.py` now
       provides `find_overlaps`. Use it. Do not reimplement interval math.
@@ -253,14 +253,22 @@ tasks:
       No dependency was added. No file other than `pantry_shifts/schedule.py`
       and `tests/test_schedule.py` changed.
     estimatedCostUsd: 0.12
-    goal: Complete Report overlaps on a schedule within the named files.
-    tests: npm test
-    do:
-      - README.md
-    don't:
-      - Do not add a dependency.
-    deliverable: A unified diff of the files named in do.
+    goal: Make validate_schedule also report double-bookings, using find_overlaps.
     size: medium
+    tests:
+      - "git clone https://github.com/yonatan-langer83/volunteer-compute-test && cd volunteer-compute-test"
+      - "python -m pip install -e \".[dev]\""
+      - "python -m pytest"
+    do:
+      - pantry_shifts/schedule.py
+      - tests/test_schedule.py
+    don't:
+      - "Do not reimplement interval math; use find_overlaps."
+      - "Do not add a dependency."
+      - "Do not edit AGENTS.md, README.md (unless named in do), volunteer-compute.yaml or anything in .github/."
+      - "Do not open a pull request yourself. Submit the diff with submit_result; the project opens the pull request."
+    deliverable: "One unified diff (git diff) of only the files in do, submitted with submit_result, plus a summary that restates the acceptance criteria and pastes the full python -m pytest output."
+
   - id: extract-allowed-roles
     title: Extract the allowed-role catalog
     instructions: |
@@ -287,11 +295,19 @@ tasks:
       No dependency was added. No file other than `pantry_shifts/shifts.py`
       changed.
     estimatedCostUsd: 0.04
-    goal: Complete Extract the allowed-role catalog within the named files.
-    tests: npm test
-    do:
-      - README.md
-    don't:
-      - Do not add a dependency.
-    deliverable: A unified diff of the files named in do.
+    goal: Move the allowed role names into one ALLOWED_ROLES frozenset that validation reads from.
     size: small
+    tests:
+      - "git clone https://github.com/yonatan-langer83/volunteer-compute-test && cd volunteer-compute-test"
+      - "python -m pip install -e \".[dev]\""
+      - "python -m pytest"
+    do:
+      - pantry_shifts/shifts.py
+    don't:
+      - "Do not edit tests."
+      - "Do not export ALLOWED_ROLES from pantry_shifts/__init__.py."
+      - "Do not change any other validation behavior."
+      - "Do not add a dependency."
+      - "Do not edit AGENTS.md, README.md (unless named in do), volunteer-compute.yaml or anything in .github/."
+      - "Do not open a pull request yourself. Submit the diff with submit_result; the project opens the pull request."
+    deliverable: "One unified diff (git diff) of only the files in do, submitted with submit_result, plus a summary that restates the acceptance criteria and pastes the full python -m pytest output."

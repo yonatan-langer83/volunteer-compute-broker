@@ -15,9 +15,9 @@ tasks:
       does.
     estimatedCostUsd: 0.02
     goal: Complete List the public modules within the named files.
-    tests: npm test
+    tests: Check the answer against the acceptance criteria
     do:
-      - README.md
+      - Write the answer in the submit_result summary; change no files
     don't:
       - Do not add a dependency.
     deliverable: A unified diff of the files named in do.
@@ -33,9 +33,9 @@ tasks:
       a law firm.
     estimatedCostUsd: 0.02
     goal: Complete Summarize the license obligations within the named files.
-    tests: npm test
+    tests: Check the answer against the acceptance criteria
     do:
-      - README.md
+      - Write the answer in the submit_result summary; change no files
     don't:
       - Do not add a dependency.
     deliverable: A unified diff of the files named in do.
@@ -53,9 +53,9 @@ tasks:
       One section that mentions every module from the inventory.
     estimatedCostUsd: 0.03
     goal: Complete Draft a README section from the inventory within the named files.
-    tests: npm test
+    tests: Check the answer against the acceptance criteria
     do:
-      - README.md
+      - Write the answer in the submit_result summary; change no files
     don't:
       - Do not add a dependency.
     deliverable: A unified diff of the files named in do.
@@ -72,9 +72,9 @@ tasks:
       A numbered checklist of at least 4 steps covering docs, license, and tests.
     estimatedCostUsd: 0.02
     goal: Complete Write a release checklist within the named files.
-    tests: npm test
+    tests: Check the answer against the acceptance criteria
     do:
-      - README.md
+      - Write the answer in the submit_result summary; change no files
     don't:
       - Do not add a dependency.
     deliverable: A unified diff of the files named in do.

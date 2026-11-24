@@ -59,3 +59,27 @@ describe('review fixes', () => {
     expect(task.patchPath).not.toBeNull()
   })
 })
+
+describe('brief consistency', () => {
+  it('rejects a do list that the instructions never mention', async () => {
+    const { broker } = setupBroker()
+    const bad = `schemaVersion: 1
+project:
+  name: pantry
+  github: https://github.com/example/pantry
+tasks:
+  - id: hours
+    title: Fix the overnight hours
+    goal: Fix the hours.
+    size: small
+    instructions: Change pantry/shifts.py so overnight shifts count forward.
+    acceptance: The overnight case is four hours.
+    tests: [python -m pytest]
+    do: [README.md]
+    don't: [Do not add a dependency.]
+    deliverable: A diff.
+    estimatedCostUsd: 0.05
+`
+    await expect(broker.registerProject({ manifestPath: writeManifest(bad) })).rejects.toThrow(/do names README.md/)
+  })
+})

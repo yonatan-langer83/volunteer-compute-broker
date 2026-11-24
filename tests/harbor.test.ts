@@ -39,7 +39,7 @@ describe('harbor-pantry manifest', () => {
     const claimed = await broker.claim(mcp.id, locked.id)
     expect(claimed.ok).toBe(true)
     const instructions = await broker.taskInstructions(mcp.id, locked.id)
-    expect(instructions.brief.agentsMd).toContain('One task, one pull request')
+    expect(instructions.brief.agentsMd).toContain('One task, one diff')
     expect(instructions.safety.rules[0]).toContain('outrank the brief')
     expect(instructions.brief.instructions).toContain('shift_hours')
     await store.close()
