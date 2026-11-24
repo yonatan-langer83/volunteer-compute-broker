@@ -25,6 +25,9 @@ export async function handleAdmin(broker: Broker, request: Request, adminToken: 
       })
       return Response.json(project)
     }
+    if (request.method === 'GET' && path === '/admin/applications') {
+      return Response.json({ applications: await broker.listApplications() })
+    }
     if (request.method === 'POST' && path === '/admin/mcp-donors') {
       const body = await readJson(request)
       const donor = await broker.registerMcpDonor({

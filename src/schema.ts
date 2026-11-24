@@ -123,6 +123,35 @@ CREATE TABLE IF NOT EXISTS setup_codes (
   used_at INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS applications (
+  id TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  org_name TEXT NOT NULL,
+  website TEXT,
+  contact_name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  country TEXT,
+  status_kind TEXT NOT NULL,
+  github TEXT NOT NULL,
+  repo_url TEXT,
+  needs TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'new'
+);
+
+CREATE TABLE IF NOT EXISTS waitlist (
+  email TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('chat', 'money')),
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (email, kind)
+);
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+
 CREATE INDEX IF NOT EXISTS idx_tasks_claim ON tasks (state, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_sessions_donor ON work_sessions (donor_id, status);
 CREATE INDEX IF NOT EXISTS idx_deps_parent ON task_dependencies (depends_on_id);

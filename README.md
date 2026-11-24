@@ -288,6 +288,19 @@ Other commands: `claim`, `release`, `retry`, `expire-leases`, `list-tasks --proj
 
 [Compute for Good](https://github.com/kiselas/compute_for_good) (MIT) is a larger service: accounts, a web app, independent review, and GitHub delivery, on FastAPI, Postgres, and Redis. This broker is the smaller piece: one store, one Durable Object, no accounts, and the project's own Action opens the pull request. The only page is the read-only board.
 
+## Public website
+
+The Worker serves the public site from `src/site/` (server-rendered HTML) and `public/` (CSS, fonts, icon, share image, via Workers assets):
+
+- `/`, `/volunteer`, `/organizations`, `/how-it-works`, `/projects`, `/projects/<name>`, `/volunteers`, `/volunteers/<nickname>`, `/about`, `/faq`, `/privacy`, `/terms`, `/accessibility`, plus `robots.txt`, `sitemap.xml`, `llms.txt` and `/.well-known/security.txt`.
+- `POST /volunteer/join` creates a volunteer and shows their connection key once (runs in the Durable Object, so nicknames stay unique).
+- `POST /organizations/apply` stores an application; `GET /admin/applications` lists them (admin token).
+- `POST /waitlist` records interest in chat-app volunteering or giving money.
+- Forms use Cloudflare Turnstile (`TURNSTILE_SITE_KEY` var, `TURNSTILE_SECRET` secret), a honeypot field and a per-network daily limit.
+- Optional `CONTACT_EMAIL` var: shown on the about, privacy and accessibility pages.
+
+Design: one family (Atkinson Hyperlegible Next, OFL, self-hosted), navy ink on white, with the hi-vis yellow of a volunteer vest used once in the hero. See `PROJECT-BRIEF.md` for the plan behind it.
+
 ## Known gaps
 
 - Registration reads a local manifest posted by the admin. The task list does not sync from GitHub yet.

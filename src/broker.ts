@@ -757,6 +757,10 @@ export class Broker {
     return result
   }
 
+  async listApplications() {
+    return this.store.listApplications()
+  }
+
   async keepWorking(donorId: string, taskId: string) {
     const task = await this.store.getTask(taskId)
     if (!task || task.donorId !== donorId) return { ok: false as const, reason: 'not_holder' }

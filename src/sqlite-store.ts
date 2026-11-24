@@ -703,6 +703,45 @@ export class SqliteStore {
     return changed === 1
   }
 
+  async handleTaken(handle: string): Promise<boolean> {
+    await this.ready
+    return !!(await this.sql.get(`SELECT 1 AS x FROM donors WHERE handle = ?`, [handle]))
+  }
+
+  async insertApplication(row: {
+    id: string; createdAt: number; orgName: string; website: string | null; contactName: string; email: string
+    country: string | null; statusKind: string; github: string; repoUrl: string | null; needs: string
+  }) {
+    await this.ready
+    await this.sql.run(
+      `INSERT INTO applications (id, created_at, org_name, website, contact_name, email, country, status_kind, github, repo_url, needs, state)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')`,
+      [row.id, row.createdAt, row.orgName, row.website, row.contactName, row.email, row.country, row.statusKind, row.github, row.repoUrl, row.needs],
+    )
+  }
+
+  async listApplications() {
+    await this.ready
+    return await this.sql.all(`SELECT * FROM applications ORDER BY created_at DESC`, [])
+  }
+
+  async addToWaitlist(email: string, kind: 'chat' | 'money', now: number) {
+    await this.ready
+    await this.sql.run(`INSERT OR IGNORE INTO waitlist (email, kind, created_at) VALUES (?, ?, ?)`, [email, kind, now])
+  }
+
+  // Counts one hit for key and says whether it is still within limit.
+  async hitRateLimit(key: string, limit: number, windowMs: number, now: number): Promise<boolean> {
+    await this.ready
+    await this.sql.run(`DELETE FROM rate_limits WHERE key = ? AND expires_at <= ?`, [key, now])
+    await this.sql.run(
+      `INSERT INTO rate_limits (key, count, expires_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = count + 1`,
+      [key, now + windowMs],
+    )
+    const row = await this.sql.get(`SELECT count FROM rate_limits WHERE key = ?`, [key]) as { count: number } | undefined
+    return (row?.count ?? 0) <= limit
+  }
+
   async prepare() {
     await this.ready
   }

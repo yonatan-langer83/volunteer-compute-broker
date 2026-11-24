@@ -8,6 +8,8 @@ import { D1Sql } from './d1-sql.js'
 import { createFakeRegistry } from './fake-provider.js'
 import { createPullRequestOpener, handleGithubWebhook, handleSetupCallback, handleSetupStart } from './github-routes.js'
 import { createMcpServer } from './mcp-tools.js'
+import { notFoundPage } from './site/pages.js'
+import { handleApply, handleJoin, handleSiteGet, handleWaitlist, type SiteDeps } from './site/router.js'
 import { loadPublicBoard, renderPublicHtml } from './public-board.js'
 import { SqliteStore } from './sqlite-store.js'
 
@@ -25,11 +27,36 @@ export interface Env {
   BROKER: ObjectNamespace
   BROKER_MASTER_KEY: string
   ADMIN_TOKEN: string
+  ASSETS?: { fetch(request: Request): Promise<Response> }
+  TURNSTILE_SITE_KEY?: string
+  TURNSTILE_SECRET?: string
+  CONTACT_EMAIL?: string
+}
+
+const STATIC = /^\/(site\.css|site\.js|favicon\.svg|og\.png|fonts\/[a-z0-9-]+\.woff2)$/
+
+function siteDeps(env: Env, store: SqliteStore): SiteDeps {
+  return {
+    store,
+    config: { turnstileSiteKey: env.TURNSTILE_SITE_KEY || null, contactEmail: env.CONTACT_EMAIL || null },
+    turnstileSecret: env.TURNSTILE_SECRET || null,
+  }
+}
+
+async function withStore<T>(env: Env, run: (store: SqliteStore) => Promise<T>): Promise<T> {
+  const store = new SqliteStore(new D1Sql(env.DB))
+  try {
+    await store.prepare()
+    return await run(store)
+  } finally {
+    await store.close()
+  }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+    if ((request.method === 'GET' || request.method === 'HEAD') && STATIC.test(url.pathname) && env.ASSETS) return env.ASSETS.fetch(request)
     if (request.method === 'GET' && isPublicPath(url.pathname)) return servePublic(env, url.pathname)
     if (request.method === 'GET' && (url.pathname === '/setup/github' || url.pathname === '/setup/github/callback')) {
       const store = new SqliteStore(new D1Sql(env.DB))
@@ -42,8 +69,13 @@ export default {
         await store.close()
       }
     }
-    if (url.pathname !== '/mcp' && !url.pathname.startsWith('/admin') && url.pathname !== '/github/webhook') {
-      return Response.json({ error: 'not_found' }, { status: 404 })
+    if (request.method === 'POST' && url.pathname === '/organizations/apply') return withStore(env, (store) => handleApply(siteDeps(env, store), request))
+    if (request.method === 'POST' && url.pathname === '/waitlist') return withStore(env, (store) => handleWaitlist(siteDeps(env, store), request))
+    const toBroker = url.pathname === '/mcp' || url.pathname.startsWith('/admin') || url.pathname === '/github/webhook' ||
+      (url.pathname === '/volunteer/join' && request.method === 'POST')
+    if (!toBroker) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return Response.json({ error: 'not_found' }, { status: 404 })
+      return withStore(env, async (store) => (await handleSiteGet(siteDeps(env, store), url)) ?? notFoundPage())
     }
     const id = env.BROKER.idFromName('broker')
     return env.BROKER.get(id).fetch(request)
@@ -78,6 +110,9 @@ export class BrokerObject extends DurableObject<Env> {
     const url = new URL(request.url)
     if (url.pathname === '/mcp') return handleMcp(broker, request)
     if (url.pathname.startsWith('/admin')) return handleAdmin(broker, request, this.env.ADMIN_TOKEN ?? '')
+    if (url.pathname === '/volunteer/join' && request.method === 'POST') {
+      return handleJoin(siteDeps(this.env, this.store!), broker, request)
+    }
     if (url.pathname === '/github/webhook' && request.method === 'POST') {
       return handleGithubWebhook(broker, this.store!, loadMasterKey(this.env.BROKER_MASTER_KEY), request)
     }
@@ -106,7 +141,7 @@ export class BrokerObject extends DurableObject<Env> {
 }
 
 function isPublicPath(pathname: string): boolean {
-  return pathname === '/' || pathname === '/public.json' || /^\/public\/tasks\/[^/]+\/patch$/.test(pathname)
+  return pathname === '/public.json' || /^\/public\/tasks\/[^/]+\/patch$/.test(pathname)
 }
 
 async function servePublic(env: Env, pathname: string): Promise<Response> {
