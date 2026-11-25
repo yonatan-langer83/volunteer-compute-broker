@@ -7,6 +7,7 @@ import { briefKey, PAUSED_FOR_BRIEF, POLICY, REMOVED_FROM_LIST, standing } from 
 
 import { budgetPeriod, compareClaimable, explainTaskFit, placementBlock, supportsProject } from './budget.js'
 import { publicHandle } from './handle.js'
+import { blockingTask } from './sequencing.js'
 import { briefText, lintInjection } from './injection-lint.js'
 import type { TaskSize } from './task-size.js'
 import { isTaskSize } from './task-size.js'
@@ -536,6 +537,7 @@ export class Broker {
       return { ok: false, reason: 'reserved_for_revision' }
     }
     if (((await this.store.reviewCounts()).get(existing.projectId) ?? 0) >= POLICY.reviewCap) return { ok: false, reason: 'organization_review_backlog' }
+    if (blockingTask(existing, await this.busyFootprints())) return { ok: false, reason: 'files_busy' }
     const donor = await this.store.getDonor(donorId)
     if (donor?.kind === 'mcp') {
       const gate = await this.sessionGate(donorId, existing.size)
@@ -568,7 +570,9 @@ export class Broker {
     if (candidates.length === 0) return { ok: false, reason: 'none_available' }
     const projects = new Map((await this.store.listProjects()).map((project) => [project.id, project]))
     const supported = await this.store.supportNames(donorId)
+    const busy = await this.busyFootprints()
     const fitting = candidates.filter((task) => {
+      if (blockingTask(task, busy)) return false
       const projectName = projects.get(task.projectId)?.name ?? ''
       return (
         explainTaskFit({
@@ -695,7 +699,9 @@ export class Broker {
     const session = donor.kind === 'mcp' ? await this.store.getOpenSession(donorId) : null
     if (donor.kind === 'mcp' && !session) return []
     const reviewCounts = await this.store.reviewCounts()
+    const busy = await this.busyFootprints()
     const tasks = (await this.store.listOpenForDonor(donor.kind === 'mcp' ? null : donor.provider, now)).filter((task) => {
+      if (blockingTask(task, busy)) return false
       if (session && task.size !== session.size) return false
       if (session && !session.hasComputer && task.needsComputer) return false
       if ((reviewCounts.get(task.projectId) ?? 0) >= POLICY.reviewCap) return false
@@ -1015,6 +1021,32 @@ export class Broker {
       }
     }
     return due
+  }
+
+  /**
+   * The files each busy task actually holds: the changed files of a pull request
+   * in review, the planned files of work in progress, and the brief's scope only
+   * until a plan is in. Broad briefs ("src/**") then don't lock a whole project.
+   */
+  private async busyFootprints() {
+    const out: { id: string; projectId: string; scopeDo: string[] }[] = []
+    for (const task of await this.store.busyTasks()) {
+      let files: string[] | null = null
+      if (task.state === 'review' && task.submissionPatch) files = patchPaths(task.submissionPatch)
+      else if (task.donorId) {
+        const plan = (await this.store.getPlanRecord(task.id, task.donorId))?.plan_json
+        if (plan) files = (JSON.parse(plan) as Plan).files
+      }
+      out.push({ id: task.id, projectId: task.projectId, scopeDo: files?.length ? files : task.scopeDo })
+    }
+    return out
+  }
+
+  /** True the first time a conflict is seen for this pull request; records it. */
+  async firstConflictNotice(taskId: string) {
+    if ((await this.store.listTaskSignals(taskId)).some((s) => s.kind === 'conflict_notice')) return false
+    await this.store.addTaskSignal({ id: randomUUID(), taskId, kind: 'conflict_notice', detail: null, url: null }, this.now())
+    return true
   }
 
   async markReminderSent(taskId: string, days: number) {

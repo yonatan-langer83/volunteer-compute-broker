@@ -81,6 +81,12 @@ A claim lasts 45 minutes (small), 90 (medium) or 180 (large).
 ### …you close a pull request that's waiting for a revision
 **Automatic:** the revision ends, and the task starts fresh with your feedback for the next volunteer.
 
+### …two tasks would change the same file
+Only one is offered at a time. The second waits until the first is merged or closed, then starts from the current `main`. This is how we avoid conflicting pull requests.
+
+### …the main branch moves on while a change waits for review
+Our app updates the volunteer's pull request with the new `main`. If the two really conflict, it leaves one comment: resolve it on GitHub, or close the pull request and the task returns to the pool for a fresh start.
+
 ### …nobody reviews it
 **Automatic:** after **7 days** our app posts a friendly reminder on the pull request, and after **21 days** a firmer one. While **5** changes wait on a project, no new work starts there.
 **Organization:** if you can't review for a while, tell us and we pause your tasks.

@@ -444,6 +444,26 @@ export class GitHubApp {
     const pr = await this.call<{ head: { ref: string; sha: string } }>(token, 'GET', `/repos/${match[1]}/${match[2]}/pulls/${match[3]}`)
     return { branch: pr.head.ref, sha: pr.head.sha }
   }
+
+  // Keep a volunteer pull request current with the default branch.
+  // 'behind' → GitHub merges main into the volunteer branch (no new review needed
+  // for the volunteer's own lines); 'dirty' → a real conflict a person must settle.
+  async refreshPullRequest(prUrl: string): Promise<'updated' | 'current' | 'conflict' | 'closed' | 'unknown'> {
+    const match = prUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/)
+    if (!match) return 'unknown'
+    const [, owner, repo, number] = match
+    const token = await this.installationToken(owner!, repo!)
+    const pr = await this.call<{ state: string; mergeable_state?: string; head: { sha: string } }>(token, 'GET', `/repos/${owner}/${repo}/pulls/${number}`)
+    if (pr.state !== 'open') return 'closed'
+    if (pr.mergeable_state === 'dirty') return 'conflict'
+    if (pr.mergeable_state !== 'behind') return pr.mergeable_state ? 'current' : 'unknown'
+    try {
+      await this.call(token, 'PUT', `/repos/${owner}/${repo}/pulls/${number}/update-branch`, { expected_head_sha: pr.head.sha })
+      return 'updated'
+    } catch (error) {
+      return /failed: 422/.test(String(error)) ? 'conflict' : 'unknown'
+    }
+  }
 }
 
 // Preview hosts name branch previews by a slug of the branch (Cloudflare Pages:

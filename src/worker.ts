@@ -27,6 +27,14 @@ import { containerCheckRunner } from './test-runner.js'
 import type { ProjectRecord } from './types.js'
 import { Workspaces, type RepoReader } from './workspace.js'
 
+const CONFLICT_NOTE = [
+  'This volunteer change now conflicts with the main branch, so GitHub cannot bring it up to date by itself.',
+  '',
+  'Two easy ways forward:',
+  '- **Small conflict:** use "Resolve conflicts" on this page and keep both sides where they make sense.',
+  '- **Otherwise:** close this pull request. The task goes back to the pool and the next volunteer starts from the current main branch.',
+].join('\n')
+
 export { TestRunner } from './test-runner.js'
 
 
@@ -312,7 +320,7 @@ export class BrokerObject extends DurableObject<Env> {
     const url = new URL(request.url)
     if (url.pathname === '/internal/volunteer' && request.method === 'POST') return this.createVolunteer(broker, request)
     if (url.pathname === '/internal/sync' && request.method === 'POST') {
-      return Response.json({ ...(await this.syncProjects(broker)), reminders: await this.sendReviewReminders(broker) })
+      return Response.json({ ...(await this.syncProjects(broker)), reminders: await this.sendReviewReminders(broker), refreshed: await this.refreshVolunteerPrs(broker) })
     }
     if (url.pathname.startsWith('/admin')) return handleAdmin(broker, request, this.env.ADMIN_TOKEN ?? '')
     if (url.pathname === '/github/webhook' && request.method === 'POST') {
@@ -375,6 +383,27 @@ export class BrokerObject extends DurableObject<Env> {
     return sent
   }
 
+  // Volunteer pull requests that fell behind main get main merged in, so they
+  // don't go stale while they wait. A conflict gets one plain comment.
+  private async refreshVolunteerPrs(broker: Broker) {
+    const app = await this.githubApp()
+    if (!app) return []
+    const report: { url: string; result: string }[] = []
+    for (const task of await this.store!.tasksInReview()) {
+      if (!task.submissionUrl) continue
+      try {
+        const result = await app.refreshPullRequest(task.submissionUrl)
+        if (result === 'conflict' && await broker.firstConflictNotice(task.id)) {
+          await app.commentOnPullRequest(task.submissionUrl, CONFLICT_NOTE)
+        }
+        if (result !== 'current') report.push({ url: task.submissionUrl, result })
+      } catch (error) {
+        console.error('refresh failed', task.submissionUrl, error)
+      }
+    }
+    return report
+  }
+
   private async syncProjects(broker: Broker) {
     const results: unknown[] = []
     for (const project of await this.store!.listProjects()) {
@@ -390,20 +419,32 @@ export class BrokerObject extends DurableObject<Env> {
         const app = await this.githubApp()
         const repo = parseRepo(project.github)
         if (app && repo) {
-          const issues = await app.listReadyIssues(repo.owner, repo.repo, READY_LABEL).catch(() => [])
+          let issues: Awaited<ReturnType<GitHubApp['listReadyIssues']>> = []
+          try {
+            issues = await app.listReadyIssues(repo.owner, repo.repo, READY_LABEL)
+          } catch (error) {
+            // Most often the installation hasn't accepted the Issues permission yet.
+            issueProblems.push({ issue: 0, errors: [`Could not read task issues from GitHub: ${String((error as Error)?.message ?? error).slice(0, 300)}`] })
+            console.error('sync: listReadyIssues failed', project.name, error)
+          }
+          console.log('sync: ready issues', project.name, issues.map((i) => i.number))
           for (const issue of issues) {
             const parsed = issueToTask(issue)
             if (parsed.task) issueTasks.push(parsed.task)
             else issueProblems.push({ issue: issue.number, errors: parsed.errors })
           }
-          await this.store!.saveSyncNotes(project.id, issueProblems.map((p) => ({ ref: `issue-${p.issue}`, message: p.errors.join('; ') })), Date.now())
+          await this.store!.saveSyncNotes(project.id, issueProblems.map((p) => ({ ref: p.issue ? `issue-${p.issue}` : 'issues', message: p.errors.join('; ') })), Date.now())
         }
         const manifest = parseManifestYaml(yaml, issueTasks)
         if (manifest.project.name !== project.name) continue
         const agentsMd = await reader.readFile(sha, 'AGENTS.md')
         results.push(await broker.syncManifest({ manifest, agentsMd }))
       } catch (error) {
-        results.push({ project: project.name, error: error instanceof Error ? error.message : String(error) })
+        const message = error instanceof Error ? error.message : String(error)
+        console.error('sync failed', project.name, message)
+        // Keep it visible to the organization (and us) on the account page.
+        await this.store!.saveSyncNotes(project.id, [{ ref: 'sync', message: `Your task list could not be read: ${message.slice(0, 600)}` }], Date.now()).catch(() => undefined)
+        results.push({ project: project.name, error: message })
       }
     }
     return { synced: results }

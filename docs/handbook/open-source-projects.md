@@ -30,6 +30,17 @@ We never list a project without its maintainers' consent. Joining means applying
 | Credit and community | Volunteers who use GitHub are co-authors on their commits; their work shows on their GitHub profile and a public impact page. |
 | Security | Our app can only open pull requests on branches named `volunteer/…`, never merges, never touches `.github/`. See [what our app can do](/handbook/our-github-app). |
 
+## Less duplicate work
+
+On a busy project, three people translate the same file, two of them conflict with `main`, and the third misses strings. Volunteer Pool coordinates the work it brings you, without a coordinator:
+
+- **You decide what comes to us.** Only issues you label `volunteer-ready` (added by someone who may merge) or tasks in your task list. Everything else stays yours.
+- **One open change per file.** While a volunteer is working on a file, or their change waits for your review, no other volunteer is given a task that touches that file. The next one starts after you merge or close, from the current `main`.
+- **Changes stay current.** When a volunteer pull request falls behind `main`, our app brings it up to date for you. If there's a real conflict, it says so once, and you either resolve it on GitHub or close it and the task goes back to the pool.
+- **Translations stay complete.** Write "every key in `en.json` exists in `he.json`" as an acceptance criterion and a check, and the AI must show evidence for it.
+
+What we can't do: coordinate people who work outside Volunteer Pool. GitHub's own tools help there: assign the issue, link the pull request to it (`Closes #12`), and use a check that fails on missing translation keys.
+
 ## Getting started
 
 1. [Apply](/organizations#apply) with your repository and, if you have one, your public-good listing.

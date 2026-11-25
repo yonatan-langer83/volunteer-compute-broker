@@ -9,6 +9,18 @@ A work package is one task: a GitHub issue made with the **Volunteer task** form
 
 The same brief goes, word for word, to every volunteer's AI, and its fingerprint appears in the pull request. So a good brief is your strongest quality control.
 
+## Inputs, outputs, success
+
+Every task is a contract with three parts. An under-specified task gets a change that looks plausible and is wrong, so each part is required.
+
+| Part | What it is | Where it goes |
+|---|---|---|
+| **Inputs** | The context the AI starts from: the goal and why, the files it may change, the steps, the limits | `goal`, `do`, `instructions`, `don't`, plus your `AGENTS.md` |
+| **Outputs** | What comes back: a written plan before any edit, a pull request, and evidence for each acceptance criterion | `deliverable`; the plan and evidence are added by our server |
+| **Success criteria** | How you decide, without trusting the AI's own confidence: the checks pass, the scans show no warnings, a person who may merge approves | `acceptance`, `tests`, your required checks and review rules |
+
+**Plan first, then act.** By default the AI writes its plan, our server checks it against the allowed files, and the plan goes into the pull request with the change, so your reviewer reads the reasoning and the diff together. If you'd rather approve the plan *before* any change is written, for a risky area, say so in the brief ("Stop after the plan and wait for approval in the issue"). The AI then opens a pull request containing only its plan, and continues after you approve. It costs you an extra review step, so keep it for the few tasks that need it.
+
 ## The checklist
 
 Every task needs:

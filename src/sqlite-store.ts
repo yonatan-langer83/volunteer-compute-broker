@@ -1083,6 +1083,13 @@ export class SqliteStore {
     return new Map(rows.map((r) => [r.project_id, Number(r.n)]))
   }
 
+  /** Tasks someone is working on or that wait for review: their files are taken. */
+  async busyTasks() {
+    await this.ready
+    const rows = await this.sql.all(`SELECT ${TASK_COLUMNS} FROM tasks WHERE state IN ('claimed', 'running', 'review')`, []) as unknown as TaskRow[]
+    return rows.map(taskFromRow)
+  }
+
   async tasksInReview() {
     await this.ready
     const rows = await this.sql.all(`SELECT ${TASK_COLUMNS} FROM tasks WHERE state = 'review' ORDER BY updated_at`, []) as unknown as TaskRow[]
