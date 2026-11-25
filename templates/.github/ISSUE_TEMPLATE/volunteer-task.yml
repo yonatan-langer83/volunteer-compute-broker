@@ -59,7 +59,11 @@ body:
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: What must be true when it's done, so a reviewer can check it.
+      description: What must be true when it's done, so a reviewer can check it. If people will see or use the change, include who must be able to use it, for example right-to-left languages, keyboard and screen reader, a 360-pixel phone screen.
+      placeholder: |
+        - At 360px wide there is no sideways scrolling
+        - In Hebrew the layout reads right to left
+        - Every field can be reached with the keyboard and has a label
     validations:
       required: true
   - type: input

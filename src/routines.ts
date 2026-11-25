@@ -25,6 +25,12 @@ export const POLICY = {
 
 export const PAUSED_FOR_BRIEF = `Handed back ${POLICY.returnsBeforePause} times. Paused until the organization improves the brief.`
 
+/** The control that must be switched on before tasks go out. */
+export function reviewRequired(rules: { pullRequestRequired: boolean; reviewsRequired: number } | null): boolean {
+  return !!rules && rules.pullRequestRequired && rules.reviewsRequired >= 1
+}
+
+export const NO_REVIEW_RULE = 'Waiting for the organization to require a review before merging.'
 export const REMOVED_FROM_LIST = 'Removed from the task list by the organization.'
 
 export type TrackStanding = { level: 'normal' } | { level: 'small-only'; message: string } | { level: 'paused'; message: string }

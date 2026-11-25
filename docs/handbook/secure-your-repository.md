@@ -24,6 +24,8 @@ description: The GitHub settings that turn review into an enforced gate before v
 
 ### 1. Protect your main branch
 
+**Required before your tasks go out.** Until your main branch requires a pull request with at least one approval, our server pauses your tasks and says why on your account page. Use a ruleset: our app can read rulesets, but not classic branch protection.
+
 *Settings → Rules → Rulesets → New branch ruleset.* Target your default branch (usually `main`) and turn on:
 
 - **Require a pull request before merging**, with **1 required approval**;

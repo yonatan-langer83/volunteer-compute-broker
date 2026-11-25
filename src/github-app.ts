@@ -377,6 +377,7 @@ export class GitHubApp {
     record?: string
     closesIssue?: number | null
     coAuthor?: string | null
+    kind?: string
   }): Promise<string> {
     const { owner, repo } = input
     const token = await this.installationToken(owner, repo)
@@ -397,6 +398,8 @@ export class GitHubApp {
     if (body.includes('{pr}')) {
       await this.call(token, 'PATCH', `/repos/${owner}/${repo}/pulls/${pr.number}`, { body: fillPreview(body, branch, pr.number) })
     }
+    // Labels let maintainers filter, track and revert volunteer AI work quickly.
+    await this.call(token, 'POST', `/repos/${owner}/${repo}/issues/${pr.number}/labels`, { labels: prLabels(input.kind) }).catch(() => undefined)
     return pr.html_url
   }
 
@@ -473,6 +476,10 @@ export function fillPreview(body: string, branch: string, prNumber: number | nul
   let out = body.replaceAll('{branch}', slug)
   if (prNumber !== null) out = out.replaceAll('{pr}', String(prNumber))
   return out
+}
+
+export function prLabels(kind: string | undefined): string[] {
+  return ['agent-generated', 'volunteer-pool', kind === 'writing' ? 'agent-docs' : 'agent-code']
 }
 
 export function taskIdFromPrBody(body: string | null | undefined): string | null {

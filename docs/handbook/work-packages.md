@@ -30,6 +30,7 @@ Every task needs:
 - [ ] **Exact files** in `do`. Name every file the volunteer may change or create, and mention each one in the instructions. Our server refuses edits to any other file.
 - [ ] **Steps** in `instructions`: what to change, in order. Point to the code or text that's involved.
 - [ ] **Acceptance criteria** you can check: what must be true when it's done. The volunteer's AI must give evidence for each one.
+- [ ] **Everyone can use it.** If people will see or use the change, say who must be able to: right-to-left languages (Hebrew, Arabic), keyboard and screen reader, a 360-pixel phone screen, slow connections. Put these in the acceptance criteria, not as an afterthought.
 - [ ] **A check command** in `tests` for code tasks (for example `python -m pytest`). Writing tasks can leave it out.
 - [ ] **Limits** in `don't`: no new dependencies, don't touch other features, keep the existing style.
 - [ ] **A deliverable:** what you get back ("a change to `signup.html` and `signup.css`").

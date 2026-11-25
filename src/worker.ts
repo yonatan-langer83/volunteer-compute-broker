@@ -1,3 +1,4 @@
+import { NO_REVIEW_RULE, reviewRequired } from './routines.js'
 import { createHash } from 'node:crypto'
 
 import { DurableObject } from 'cloudflare:workers'
@@ -26,6 +27,9 @@ import { SqliteStore } from './sqlite-store.js'
 import { containerCheckRunner } from './test-runner.js'
 import type { ProjectRecord } from './types.js'
 import { Workspaces, type RepoReader } from './workspace.js'
+
+
+const NO_REVIEW_NOTE = 'Your tasks are paused until your main branch requires a pull request with at least one approving review. Add a branch ruleset: Settings → Rules → Rulesets → New branch ruleset, target the default branch, turn on "Require a pull request before merging" with 1 required approval. (Classic branch protection is not visible to our app, so please use a ruleset.)'
 
 const CONFLICT_NOTE = [
   'This volunteer change now conflicts with the main branch, so GitHub cannot bring it up to date by itself.',
@@ -419,6 +423,15 @@ export class BrokerObject extends DurableObject<Env> {
         const app = await this.githubApp()
         const repo = parseRepo(project.github)
         if (app && repo) {
+          // Supervision without enforcement is only advice: no tasks go out until a
+          // person must approve every change to the main branch.
+          const rules = await app.branchProtections(repo.owner, repo.repo)
+          if (!reviewRequired(rules)) {
+            await this.store!.pauseProjectTasks(project.id, NO_REVIEW_RULE)
+            await this.store!.saveSyncNotes(project.id, [{ ref: 'review-rule', message: NO_REVIEW_NOTE }], Date.now())
+            results.push({ project: project.name, paused: 'no_review_rule' })
+            continue
+          }
           let issues: Awaited<ReturnType<GitHubApp['listReadyIssues']>> = []
           try {
             issues = await app.listReadyIssues(repo.owner, repo.repo, READY_LABEL)
@@ -439,6 +452,7 @@ export class BrokerObject extends DurableObject<Env> {
         if (manifest.project.name !== project.name) continue
         const agentsMd = await reader.readFile(sha, 'AGENTS.md')
         results.push(await broker.syncManifest({ manifest, agentsMd }))
+        await this.store!.resumeProjectTasks(project.id, NO_REVIEW_RULE)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         console.error('sync failed', project.name, message)

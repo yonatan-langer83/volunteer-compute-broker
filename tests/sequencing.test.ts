@@ -33,3 +33,18 @@ describe('scope entries', () => {
     expect(blockingTask(prose, [a])).toBeNull()
   })
 })
+
+import { prLabels } from '../src/github-app.js'
+import { reviewRequired } from '../src/routines.js'
+
+describe('controls switched on', () => {
+  it('needs a pull request and one approval before tasks go out', () => {
+    expect(reviewRequired(null)).toBe(false)
+    expect(reviewRequired({ pullRequestRequired: true, reviewsRequired: 0 })).toBe(false)
+    expect(reviewRequired({ pullRequestRequired: true, reviewsRequired: 1 })).toBe(true)
+  })
+  it('labels volunteer pull requests by kind', () => {
+    expect(prLabels('writing')).toEqual(['agent-generated', 'volunteer-pool', 'agent-docs'])
+    expect(prLabels('code')).toContain('agent-code')
+  })
+})

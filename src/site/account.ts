@@ -453,7 +453,7 @@ export async function accountPage(deps: AccountDeps, request: Request, notice?: 
     ${p.review.length ? `<p><strong>Waiting for your review:</strong></p><ul>${p.review.map((r) => `<li>${r.url ? `<a href="${esc(r.url)}">${esc(r.title)}</a>` : esc(r.title)}${r.signals.length ? ` <span class="muted">(${esc(r.signals.join(', '))})</span>` : ''}</li>`).join('')}</ul>` : ''}
     ${p.revising.length ? `<p><strong>Being revised after your review:</strong></p><ul>${p.revising.map((r) => `<li><a href="${esc(r.url)}">${esc(r.title)}</a></li>`).join('')}</ul>` : ''}
     ${p.paused.length ? `<p><strong>Paused, waiting for a better brief:</strong></p><ul>${p.paused.map((r) => `<li>${esc(r.title)}: <span class="muted">${esc(r.reason)}</span></li>`).join('')}</ul>` : ''}
-    ${p.notes.length ? `<p><strong>Problems reading your tasks:</strong></p><ul>${p.notes.map((n) => `<li>${esc(n.ref === 'sync' ? 'Task list' : n.ref === 'issues' ? 'Task issues' : n.ref.replace('issue-', 'Issue #'))}: <span class="muted">${esc(n.message)}</span></li>`).join('')}</ul>` : ''}
+    ${p.notes.length ? `<p><strong>Problems reading your tasks:</strong></p><ul>${p.notes.map((n) => `<li>${esc(n.ref === 'sync' ? 'Task list' : n.ref === 'issues' ? 'Task issues' : n.ref === 'review-rule' ? 'Review rule' : n.ref.replace('issue-', 'Issue #'))}: <span class="muted">${esc(n.message)}</span></li>`).join('')}</ul>` : ''}
     <h4>Safety settings on GitHub</h4>
     ${protectionList(p.protections)}
   </article>`).join('')}

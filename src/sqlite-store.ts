@@ -1073,6 +1073,16 @@ export class SqliteStore {
     return { accepted: count('accepted'), rejected: count('rejected'), released: count('released'), expired: count('expired'), spam: count('spam') }
   }
 
+  async pauseProjectTasks(projectId: string, reason: string) {
+    await this.ready
+    await this.sql.run(`UPDATE tasks SET paused_reason = ? WHERE project_id = ? AND state IN ('open', 'blocked') AND paused_reason IS NULL`, [reason, projectId])
+  }
+
+  async resumeProjectTasks(projectId: string, reason: string) {
+    await this.ready
+    await this.sql.run(`UPDATE tasks SET paused_reason = NULL WHERE project_id = ? AND paused_reason = ?`, [projectId, reason])
+  }
+
   async pauseTask(taskId: string, reason: string) {
     return await this.sql.run(`UPDATE tasks SET paused_reason = ? WHERE id = ? AND state IN ('open', 'blocked')`, [reason, taskId])
   }
