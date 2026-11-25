@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { briefFingerprint, canonicalBrief, patchPaths, pullRequestRecord, scanPatch, validateEvidence, validatePlan, type Plan } from './contribution.js'
 import { editablePaths, isEditable } from './workspace.js'
-import { briefKey, PAUSED_FOR_BRIEF, POLICY, standing } from './routines.js'
+import { briefKey, PAUSED_FOR_BRIEF, POLICY, REMOVED_FROM_LIST, standing } from './routines.js'
 
 import { budgetPeriod, compareClaimable, explainTaskFit, placementBlock, supportsProject } from './budget.js'
 import { publicHandle } from './handle.js'
@@ -225,14 +225,22 @@ export class Broker {
       const current = existing.get(task.id)
       if (!current || (current.state !== 'open' && current.state !== 'blocked')) continue
       // Only a real change counts: it reopens a paused task and restarts its hand-back count.
-      if (briefKey(current) === briefKey(task)) continue
+      // A task put back into the list after removal reopens too.
+      if (briefKey(current) === briefKey(task) && current.pausedReason !== REMOVED_FROM_LIST) continue
       if (await this.store.updateOpenTaskBrief(task)) {
         updated += 1
         await this.store.recordOutcome({ id: randomUUID(), taskId: task.id, donorId: null, outcome: 'brief_changed', reason: null }, this.now())
       }
     }
-    this.logger.info(`project ${project.id} synced: ${added.length} added, ${updated} updated`)
-    return { project: project.name, added: added.map((t) => t.localId), updated }
+    // Tasks deleted from the file come off the board; work in progress finishes.
+    const listed = new Set(built.map((task) => task.id))
+    let removed = 0
+    for (const current of existing.values()) {
+      if (listed.has(current.id) || current.pausedReason === REMOVED_FROM_LIST) continue
+      if (await this.store.pauseTask(current.id, REMOVED_FROM_LIST)) removed += 1
+    }
+    this.logger.info(`project ${project.id} synced: ${added.length} added, ${updated} updated, ${removed} removed`)
+    return { project: project.name, added: added.map((t) => t.localId), updated, removed }
   }
 
   async registerDonor(input: {

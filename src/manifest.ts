@@ -49,6 +49,8 @@ export class ManifestError extends Error {
   }
 }
 
+const DEFAULT_COST = { small: 0.05, medium: 0.25, large: 1 } as const
+
 const TASK_ID = /^[a-z][a-z0-9-]{0,63}$/
 const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/
 
@@ -242,11 +244,14 @@ function parseTask(entry: unknown, index: number, errors: string[]): ManifestTas
       provider = entry.provider
     }
   }
-  let estimatedCostUsd = 0
-  if (typeof entry.estimatedCostUsd !== 'number' || !Number.isFinite(entry.estimatedCostUsd) || entry.estimatedCostUsd <= 0) {
-    errors.push(`${label}.estimatedCostUsd is required and must be a positive number`)
-  } else {
-    estimatedCostUsd = entry.estimatedCostUsd
+  // Optional: organizations rarely know a cost, so the size sets a typical one.
+  let estimatedCostUsd = size ? DEFAULT_COST[size] : 0
+  if (entry.estimatedCostUsd != null) {
+    if (typeof entry.estimatedCostUsd !== 'number' || !Number.isFinite(entry.estimatedCostUsd) || entry.estimatedCostUsd <= 0) {
+      errors.push(`${label}.estimatedCostUsd must be a positive number when set`)
+    } else {
+      estimatedCostUsd = entry.estimatedCostUsd
+    }
   }
   // A file a volunteer may edit must be one the instructions actually talk
   // about. This catches briefs whose do list was filled in generically and

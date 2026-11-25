@@ -19,7 +19,7 @@ import {
 } from './site/account.js'
 import { handleAuthorize } from './site/authorize.js'
 import { notFoundPage } from './site/pages.js'
-import { handleApply, handleJoin, handleSiteGet, handleWaitlist, passesTurnstile, type SiteDeps } from './site/router.js'
+import { handleApply, handleSiteGet, handleWaitlist, passesTurnstile, type SiteDeps } from './site/router.js'
 import { loadPublicBoard, renderPublicHtml } from './public-board.js'
 import { SqliteStore } from './sqlite-store.js'
 import { containerCheckRunner } from './test-runner.js'
@@ -57,7 +57,7 @@ export interface Env {
   EMAIL_FROM?: string
 }
 
-const STATIC = /^\/(site\.css|site\.js|favicon\.svg|og\.png|fonts\/[a-z0-9-]+\.woff2)$/
+const STATIC = /^\/(site\.css|site\.js|favicon\.svg|favicon\.ico|apple-touch-icon\.png|icon-512\.png|og\.png|fonts\/[a-zA-Z0-9.-]+)$/
 
 function siteDeps(env: Env, store: SqliteStore): SiteDeps {
   return {
@@ -179,8 +179,9 @@ const siteHandler = {
     }
     if (request.method === 'POST' && url.pathname === '/organizations/apply') return withStore(env, (store) => handleApply(siteDeps(env, store), request))
     if (request.method === 'POST' && url.pathname === '/waitlist') return withStore(env, (store) => handleWaitlist(siteDeps(env, store), request))
-    const toBroker = url.pathname === '/mcp' || url.pathname.startsWith('/admin') || url.pathname === '/github/webhook' ||
-      (url.pathname === '/volunteer/join' && request.method === 'POST')
+    // The old key form now starts at sign-in.
+    if (url.pathname === '/volunteer/join') return Response.redirect(`${url.origin}/signin?return=%2Faccount`, 303)
+    const toBroker = url.pathname === '/mcp' || url.pathname.startsWith('/admin') || url.pathname === '/github/webhook'
     if (!toBroker) {
       if (request.method !== 'GET' && request.method !== 'HEAD') return Response.json({ error: 'not_found' }, { status: 404 })
       return cachedPage(request, ctx, () => withStore(env, async (store) => (await handleSiteGet(siteDeps(env, store), url)) ?? notFoundPage()))
@@ -313,9 +314,6 @@ export class BrokerObject extends DurableObject<Env> {
       return Response.json({ ...(await this.syncProjects(broker)), reminders: await this.sendReviewReminders(broker) })
     }
     if (url.pathname.startsWith('/admin')) return handleAdmin(broker, request, this.env.ADMIN_TOKEN ?? '')
-    if (url.pathname === '/volunteer/join' && request.method === 'POST') {
-      return handleJoin(siteDeps(this.env, this.store!), broker, request)
-    }
     if (url.pathname === '/github/webhook' && request.method === 'POST') {
       return handleGithubWebhook(broker, this.store!, loadMasterKey(this.env.BROKER_MASTER_KEY), request)
     }

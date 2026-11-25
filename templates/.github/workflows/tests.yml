@@ -1,0 +1,28 @@
+# Runs your tests on every pull request, including volunteers'.
+# Volunteer code is untrusted until reviewed, so this workflow has no secrets and
+# can only read the repository. Make "tests" a required status check.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+# Deployments belong in a separate workflow that runs only on main and uses an
+# environment with required reviewers, so nothing publishes without a person.

@@ -185,6 +185,13 @@ export async function githubCallback(deps: AccountDeps, request: Request, url: U
   }
   const now = nowOf(deps)
   let account = await deps.store.findAccountByGithub(String(user.id))
+  // Someone signed in by email connects GitHub from their account page.
+  const current = await currentAccount(deps.store, request, now)
+  if (current && !current.github_id) {
+    if (account && account.id !== current.id) return redirect(`/account?notice=${encodeURIComponent('That GitHub account already belongs to another Volunteer Pool account.')}`, clear)
+    await deps.store.linkAccountGithub(current.id, String(user.id), user.login)
+    return redirect(returnTo, clear)
+  }
   if (!account && email) {
     // Someone who first signed in by email, now with GitHub: same verified address, same account.
     const byEmail = await deps.store.findAccountByEmail(email)
@@ -447,9 +454,14 @@ export async function accountPage(deps: AccountDeps, request: Request, notice?: 
   <p>${account.github_login ? "We don't see a project you manage yet." : 'Sign in with GitHub to see the projects you manage.'} <a href="/organizations">How to bring your work here</a>.</p>
 </section>`
 
+  const github = await deps.store.getSigninApp()
+  const connectGithub = !account.github_login && github
+    ? `<p><a class="button button-quiet button-small" href="/auth/github?return=%2Faccount">Connect GitHub</a> <span class="muted">to see projects you manage, or to code tasks yourself.</span></p>`
+    : ''
   return privatePage('Your account', `<div class="wrap page-head narrow">
   <h1>Your account</h1>
   <p class="lead">${esc(who)}</p>
+  ${connectGithub}
   ${notice ? `<p class="notice" role="status">${esc(notice)}</p>` : ''}
 </div>
 <div class="wrap section narrow account">

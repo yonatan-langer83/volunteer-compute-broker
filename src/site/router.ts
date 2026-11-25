@@ -5,9 +5,10 @@ import type { FetchLike } from '../github-app.js'
 import { loadPublicBoard } from '../public-board.js'
 import type { SqliteStore } from '../sqlite-store.js'
 import { SITE, slugify } from './layout.js'
+import { HANDBOOK } from './handbook-content.js'
 import {
-  aboutPage, accessibilityPage, faqPage, homePage, howPage, joinedPage, notFoundPage, organizationsPage, privacyPage,
-  projectPage, projectsPage, termsPage, thanksPage, volunteerImpactPage, volunteerPage, volunteersPage, type SiteConfig,
+  aboutPage, accessibilityPage, faqPage, handbookPage, homePage, howPage, notFoundPage, organizationsPage, privacyPage,
+  projectPage, projectsPage, templatesPage, termsPage, thanksPage, volunteerImpactPage, volunteerPage, volunteersPage, type SiteConfig,
 } from './pages.js'
 
 export type SiteDeps = {
@@ -18,7 +19,10 @@ export type SiteDeps = {
   now?: () => number
 }
 
-const PAGES = ['/', '/volunteer', '/organizations', '/how-it-works', '/projects', '/volunteers', '/about', '/faq', '/privacy', '/terms', '/accessibility']
+const PAGES = ['/', '/volunteer', '/organizations', '/how-it-works', '/projects', '/volunteers', '/handbook', ...HANDBOOK.filter((p) => p.slug).map((p) => `/handbook/${p.slug}`), '/handbook/templates', '/about', '/faq', '/privacy', '/terms', '/accessibility']
+
+// Old guide addresses point to the handbook.
+const MOVED: Record<string, string> = { '/guides': '/handbook', '/guides/what-is-github': '/handbook/what-is-github', '/guides/work-packages': '/handbook/work-packages', '/guides/secure-your-repository': '/handbook/secure-your-repository', '/guides/safety-and-quality': '/handbook/safety-and-quality' }
 
 const text = (body: string, type = 'text/plain') =>
   new Response(body, { headers: { 'content-type': `${type}; charset=utf-8`, 'cache-control': 'public, max-age=300' } })
@@ -27,6 +31,9 @@ export async function handleSiteGet(deps: SiteDeps, url: URL): Promise<Response 
   const path = url.pathname.length > 1 && url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname
   if (path !== url.pathname) return Response.redirect(`${url.origin}${path}${url.search}`, 301)
   const { store, config } = deps
+  if (MOVED[path]) return Response.redirect(`${url.origin}${MOVED[path]}`, 301)
+  if (path === '/handbook/templates') return templatesPage()
+  if (path === '/handbook' || path.startsWith('/handbook/')) return handbookPage(path === '/handbook' ? '' : path.slice('/handbook/'.length))
   switch (path) {
     case '/volunteer': return volunteerPage(config)
     case '/organizations': return organizationsPage(config)
@@ -36,14 +43,14 @@ export async function handleSiteGet(deps: SiteDeps, url: URL): Promise<Response 
     case '/privacy': return privacyPage(config)
     case '/terms': return termsPage()
     case '/accessibility': return accessibilityPage(config)
-    case '/robots.txt': return text(`User-agent: *\nAllow: /\nDisallow: /volunteer/join\nDisallow: /setup/\nSitemap: ${SITE.origin}/sitemap.xml\n`)
+    case '/robots.txt': return text(`User-agent: *\nAllow: /\nDisallow: /setup/\nDisallow: /account\nDisallow: /signin\nDisallow: /auth/\nDisallow: /authorize\nSitemap: ${SITE.origin}/sitemap.xml\n`)
     case '/.well-known/security.txt':
       return text(`Contact: ${config.contactEmail ? `mailto:${config.contactEmail}` : `${SITE.origin}/about`}\nExpires: 2027-11-01T00:00:00Z\nPreferred-Languages: en\n`)
   }
   if (path === '/' || path === '/projects' || path === '/volunteers' || path.startsWith('/projects/') || path.startsWith('/volunteers/') || path === '/sitemap.xml' || path === '/llms.txt') {
     const board = await loadPublicBoard(store)
     if (path === '/') return homePage(board)
-    if (path === '/projects') return projectsPage(board)
+    if (path === '/projects') return projectsPage(board, url.searchParams.get('q') ?? '', url.searchParams.get('cause') ?? '')
     if (path === '/volunteers') return volunteersPage(board)
     if (path.startsWith('/projects/')) {
       const project = board.projects.find((p) => slugify(p.name) === path.slice('/projects/'.length))
@@ -102,31 +109,6 @@ async function guard(deps: SiteDeps, request: Request, form: FormData, bucket: s
   return ok ? null : "Too many requests from your network today. Please try again tomorrow."
 }
 
-// Runs inside the broker's Durable Object, so nickname checks and sign-ups
-// happen one at a time.
-export async function handleJoin(deps: SiteDeps, broker: Broker, request: Request): Promise<Response> {
-  const form = await request.formData()
-  const nickname = field(form, 'nickname', 40)
-  const monthlyRaw = field(form, 'monthly', 4)
-  const values = { nickname, monthly: monthlyRaw }
-  const monthly = Number(monthlyRaw)
-  const blocked = await guard(deps, request, form, 'join', 20)
-  if (blocked) return volunteerPage(deps.config, blocked, values)
-  if (!/^[A-Za-z][A-Za-z0-9-]{1,31}$/.test(nickname)) {
-    return volunteerPage(deps.config, 'Choose a nickname of 2 to 32 letters, numbers or dashes, starting with a letter.', values)
-  }
-  if (!Number.isInteger(monthly) || monthly < 1 || monthly > 50) {
-    return volunteerPage(deps.config, 'Choose between 1 and 50 tasks per month.', values)
-  }
-  if (field(form, 'agree') !== 'yes') return volunteerPage(deps.config, 'Please confirm the volunteer rules.', values)
-  const handle = nickname.toLowerCase()
-  if (await deps.store.handleTaken(handle)) {
-    return volunteerPage(deps.config, `The nickname ${handle} is taken. Please choose another.`, values)
-  }
-  const donor = await broker.registerMcpDonor({ name: handle, monthlyTasks: monthly, acceptTerms: true })
-  const { token } = await broker.mintMcpToken(donor.id)
-  return joinedPage(handle, token)
-}
 
 export async function handleApply(deps: SiteDeps, request: Request): Promise<Response> {
   const form = await request.formData()
@@ -165,10 +147,10 @@ export async function handleApply(deps: SiteDeps, request: Request): Promise<Res
 export async function handleWaitlist(deps: SiteDeps, request: Request): Promise<Response> {
   const form = await request.formData()
   const blocked = await guard(deps, request, form, 'waitlist', 10)
-  if (blocked) return volunteerPage(deps.config, blocked)
+  if (blocked) return thanksPage("That didn't work", blocked)
   const email = field(form, 'email').toLowerCase()
   const kind = field(form, 'kind') === 'money' ? 'money' : 'chat'
-  if (!isEmail(email)) return volunteerPage(deps.config, 'Please enter a valid email for the list.')
+  if (!isEmail(email)) return thanksPage("That didn't work", 'Please go back and enter a valid email for the list.')
   await deps.store.addToWaitlist(email, kind, deps.now?.() ?? Date.now())
   return thanksPage("You're on the list.", `We'll write once when ${kind === 'money' ? 'giving money' : 'volunteering from a chat app'} opens. Nothing else.`)
 }

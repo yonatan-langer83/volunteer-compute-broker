@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { handleApply, handleJoin, handleSiteGet, handleWaitlist, type SiteDeps } from '../src/site/router.js'
+import { handleApply, handleSiteGet, handleWaitlist, type SiteDeps } from '../src/site/router.js'
 import { setupBroker, writeManifest } from './helpers.js'
 
 const manifest = `schemaVersion: 1
@@ -81,40 +81,32 @@ describe('public website', () => {
   })
 })
 
-describe('volunteer sign-up', () => {
-  it('creates a volunteer, shows the key once, and refuses a taken nickname', async () => {
-    const { broker, deps } = await setup()
-    const ok = await handleJoin(deps, broker, post('/volunteer/join', { nickname: 'Maya-Helps', monthly: '5', agree: 'yes' }))
-    const html = await ok.text()
-    expect(html).toContain('Welcome, maya-helps')
-    const token = html.match(/vbk_[A-Za-z0-9_-]+/)?.[0]
-    expect(token).toBeTruthy()
-    expect(ok.headers.get('cache-control')).toBe('no-store')
-    expect(await broker.authenticateMcpToken(token!)).toBeTruthy()
-    const again = await (await handleJoin(deps, broker, post('/volunteer/join', { nickname: 'maya-helps', monthly: '5', agree: 'yes' }))).text()
-    expect(again).toContain('The nickname maya-helps is taken')
-    expect(again).not.toMatch(/vbk_/)
-    expect((await get(deps, '/volunteers/maya-helps')).html).toContain('No finished tasks yet')
+describe('directory and handbook', () => {
+  it('searches projects and filters by cause', async () => {
+    const { deps } = await setup()
+    expect((await get(deps, '/projects?q=overnight')).html).toContain('harbor-pantry')
+    expect((await get(deps, '/projects?q=zebra')).html).toContain('No projects match')
+    expect((await get(deps, '/projects?cause=health')).html).toContain('No projects match')
   })
 
-  it('refuses bad input, bots and failed anti-spam checks', async () => {
-    const { broker, deps } = await setup()
-    const text = async (fields: Record<string, string>, d = deps) => (await handleJoin(d, broker, post('/volunteer/join', fields))).text()
-    expect(await text({ nickname: '1x', monthly: '5', agree: 'yes' })).toContain('Choose a nickname')
-    expect(await text({ nickname: 'ok-name', monthly: '99', agree: 'yes' })).toContain('between 1 and 50')
-    expect(await text({ nickname: 'ok-name', monthly: '5' })).toContain('confirm the volunteer rules')
-    expect(await text({ nickname: 'ok-name', monthly: '5', agree: 'yes', website_url: 'x' })).toContain('Something went wrong')
-    const strict = (await setup({ secret: 's', ok: false })).deps
-    expect(await text({ nickname: 'ok-name', monthly: '5', agree: 'yes', 'cf-turnstile-response': 't' }, { ...strict, store: deps.store })).toContain('anti-spam check failed')
+  it('serves every handbook page, the templates, and redirects old guide addresses', async () => {
+    const { deps } = await setup()
+    for (const path of ['/handbook', '/handbook/volunteers', '/handbook/organizations', '/handbook/work-packages', '/handbook/what-is-github',
+      '/handbook/secure-your-repository', '/handbook/safety-and-quality', '/handbook/what-happens-when', '/handbook/open-source', '/handbook/templates']) {
+      const { status, html } = await get(deps, path)
+      expect(status, path).toBe(200)
+      expect(html.match(/<h1[ >]/g)?.length, path).toBe(1)
+    }
+    expect((await get(deps, '/handbook/templates')).html).toContain('volunteer-compute.yaml')
+    expect((await get(deps, '/handbook/nope')).status).toBe(404)
+    expect((await get(deps, '/guides/what-is-github')).response!.status).toBe(301)
   })
 
-  it('limits sign-ups per network per day', async () => {
-    const { broker, deps } = await setup()
-    let last = ''
-    for (let i = 0; i < 21; i++) last = await (await handleJoin(deps, broker, post('/volunteer/join', { nickname: `vol-${i}`, monthly: '1', agree: 'yes' }))).text()
-    expect(last).toContain('Too many requests')
-    const other = await (await handleJoin(deps, broker, post('/volunteer/join', { nickname: 'vol-other', monthly: '1', agree: 'yes' }, '198.51.100.9'))).text()
-    expect(other).toContain('Welcome, vol-other')
+  it('keeps the generated handbook in step with docs/handbook', async () => {
+    const { readFileSync } = await import('node:fs')
+    // @ts-expect-error plain JavaScript build script
+    const { buildHandbook } = await import('../scripts/build-handbook.mjs')
+    expect(readFileSync('src/site/handbook-content.ts', 'utf8')).toBe(buildHandbook())
   })
 })
 
@@ -139,6 +131,8 @@ describe('organization applications and the waiting list', () => {
       const html = await (await handleWaitlist(deps, post('/waitlist', { email: 'Sam@Example.org', kind: 'money' }))).text()
       expect(html).toContain('on the list')
     }
-    expect(await (await handleWaitlist(deps, post('/waitlist', { email: 'nope', kind: 'chat' }))).text()).toContain('valid email')
+    expect(await (await handleWaitlist(deps, post('/waitlist', { email: 'nope', kind: 'money' }))).text()).toContain('valid email')
+    const strict = (await setup({ secret: 's', ok: false })).deps
+    expect(await (await handleWaitlist({ ...strict }, post('/waitlist', { email: 'a@b.org', kind: 'money', 'cf-turnstile-response': 't' }))).text()).toContain('anti-spam check failed')
   })
 })

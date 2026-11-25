@@ -20,6 +20,8 @@ export const POLICY = {
 
 export const PAUSED_FOR_BRIEF = `Handed back ${POLICY.returnsBeforePause} times. Paused until the organization improves the brief.`
 
+export const REMOVED_FROM_LIST = 'Removed from the task list by the organization.'
+
 export type TrackStanding = { level: 'normal' } | { level: 'small-only'; message: string } | { level: 'paused'; message: string }
 
 export function standing(record: { accepted: number; rejected: number }): TrackStanding {

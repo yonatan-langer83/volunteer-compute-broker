@@ -1,0 +1,18 @@
+# Who must review changes to which files. Turn on "Require review from Code Owners"
+# in your branch ruleset so these reviews are required.
+# Replace the names with your own GitHub users or teams.
+
+# Default reviewer for everything.
+*                       @your-org/maintainers
+
+# Automation and deployment: only your most trusted people.
+/.github/               @your-org/admins
+/deploy/                @your-org/admins
+
+# Anything that handles money, personal data or sign-in.
+/src/payments/          @your-org/admins
+/src/auth/              @your-org/admins
+
+# The volunteer task list and rules.
+/volunteer-compute.yaml @your-org/maintainers
+/AGENTS.md              @your-org/maintainers

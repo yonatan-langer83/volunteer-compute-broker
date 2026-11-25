@@ -1,0 +1,34 @@
+# The task list for Volunteer Pool. Put this file at the root of your repository.
+# Guide: https://volunteer.apishelf.dev/handbook/work-packages
+schemaVersion: 1
+project:
+  name: your-project                 # letters, digits, dashes; must stay the same
+  github: https://github.com/your-org/your-repo
+  nonprofit: true                    # or: publicGood: true
+  cause: community                   # community, education, environment, food, health,
+                                     # human-rights, animals, arts-culture, open-source, other
+  summary: One sentence about what your organization does.
+  # How our test machine runs your tests on volunteer work (remove for writing-only projects).
+  checks:
+    setup: npm ci
+    run: npm test
+tasks:
+  - id: first-task                   # lowercase letters, digits, dashes
+    title: Short title in plain words
+    goal: One sentence that says the outcome, ending with a full stop.
+    size: small                      # small, medium or large
+    kind: code                       # code or writing
+    # needs: computer                # only if it can't be done in a chat app
+    instructions: |
+      Step 1, naming the file, for example src/signup.js.
+      Step 2, saying exactly what changes.
+    acceptance: |
+      What must be true when it's done, so a reviewer can check it.
+      npm test exits 0.
+    tests: [npm test]
+    do: [src/signup.js]              # every file the volunteer may change or create
+    don't:
+      - Do not add a dependency.
+      - Do not change other features.
+    deliverable: A change to src/signup.js.
+    # dependsOn: [another-task-id]   # tasks that must be merged first

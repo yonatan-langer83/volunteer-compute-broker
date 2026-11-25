@@ -6,14 +6,14 @@ export const SITE = {
   name: 'Volunteer Pool',
   origin: 'https://volunteer.apishelf.dev',
   description:
-    'Nonprofits post small, clearly described tasks on GitHub. Volunteers connect the AI tool they already have and finish one task at a time. Every finished task is public.',
+    'A volunteer bank for digital work. Volunteers give their AI\'s help or their own skills, nonprofits get small, reviewed tasks done, and every finished task is public.',
 }
 
 export type PageMeta = {
   title: string
   description: string
   path: string
-  section?: 'volunteer' | 'organizations' | 'how' | 'projects' | 'about' | null
+  section?: 'volunteer' | 'organizations' | 'projects' | 'handbook' | 'faq' | null
   noindex?: boolean
   turnstile?: boolean
 }
@@ -23,10 +23,10 @@ export const esc = (value: unknown): string =>
 
 const NAV: { href: string; label: string; key: NonNullable<PageMeta['section']> }[] = [
   { href: '/volunteer', label: 'Volunteer', key: 'volunteer' },
-  { href: '/organizations', label: 'For organizations', key: 'organizations' },
-  { href: '/how-it-works', label: 'How it works', key: 'how' },
+  { href: '/organizations', label: 'Organizations', key: 'organizations' },
   { href: '/projects', label: 'Projects', key: 'projects' },
-  { href: '/about', label: 'About', key: 'about' },
+  { href: '/handbook', label: 'Handbook', key: 'handbook' },
+  { href: '/faq', label: 'Questions', key: 'faq' },
 ]
 
 export function securityHeaders(turnstile = false): Record<string, string> {
@@ -66,6 +66,7 @@ export function page(meta: PageMeta, body: string, status = 200, extraHeaders: R
 <meta name="description" content="${esc(meta.description)}">
 <link rel="canonical" href="${esc(url)}">
 ${meta.noindex ? '<meta name="robots" content="noindex">' : ''}
+<meta name="theme-color" content="#14213d">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="${SITE.name}">
 <meta property="og:title" content="${esc(meta.title)}">
@@ -73,7 +74,9 @@ ${meta.noindex ? '<meta name="robots" content="noindex">' : ''}
 <meta property="og:url" content="${esc(url)}">
 <meta property="og:image" content="${SITE.origin}/og.png">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preload" href="/fonts/atkinson-next-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/site.css">
 <script src="/site.js" defer></script>
@@ -83,15 +86,18 @@ ${meta.turnstile ? '<script src="https://challenges.cloudflare.com/turnstile/v0/
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-header">
   <div class="wrap header-row">
-    <a class="logo" href="/" aria-label="${SITE.name}, home"><span class="logo-mark" aria-hidden="true"></span>${SITE.name}</a>
+    <a class="logo" href="/"><img src="/favicon.svg" alt="" width="32" height="32">${SITE.name}</a>
     <nav class="nav-desktop" aria-label="Main"><ul>${nav}</ul></nav>
-    <a class="button button-small header-cta" href="/volunteer#start">Start volunteering</a>
+    <div class="header-actions">
+      <a class="signin" href="/account">Sign in</a>
+      <a class="button button-small" href="/volunteer#start">Start volunteering</a>
+    </div>
     <details class="nav-mobile">
-      <summary aria-label="Menu"><span aria-hidden="true">Menu</span></summary>
-      <div class="menu">
+      <summary>Menu</summary>
+      <nav class="menu" aria-label="Main">
         <a class="button" href="/volunteer#start">Start volunteering</a>
-        <ul>${nav}</ul>
-      </div>
+        <ul>${nav}<li><a href="/account">Sign in / your account</a></li></ul>
+      </nav>
     </details>
   </div>
 </header>
@@ -100,13 +106,18 @@ ${body}
 </main>
 <footer class="site-footer">
   <div class="wrap footer-grid">
+    <div class="footer-about">
+      <a class="logo" href="/"><img src="/favicon.svg" alt="" width="32" height="32">${SITE.name}</a>
+      <p>A volunteer bank for digital work. Volunteers give their AI's help or their own skills; nonprofits get small, reviewed pieces of work done.</p>
+    </div>
     <div>
-      <h2>Volunteer</h2>
+      <h2>Volunteers</h2>
       <ul>
         <li><a href="/volunteer">Start volunteering</a></li>
-        <li><a href="/volunteer#tools">Connect your AI tool</a></li>
-        <li><a href="/volunteer#coming">Chat apps and donations</a></li>
+        <li><a href="/volunteer#apps">Connect your AI app</a></li>
+        <li><a href="/handbook/volunteers">Volunteer handbook</a></li>
         <li><a href="/volunteers">Volunteers</a></li>
+        <li><a href="/account">Your account</a></li>
       </ul>
     </div>
     <div>
@@ -114,29 +125,35 @@ ${body}
       <ul>
         <li><a href="/organizations">How it works for you</a></li>
         <li><a href="/organizations#apply">Apply</a></li>
-        <li><a href="/organizations#github">Getting onto GitHub</a></li>
+        <li><a href="/handbook/what-is-github">What is GitHub?</a></li>
+        <li><a href="/handbook/work-packages">Writing work packages</a></li>
         <li><a href="/projects">Supported projects</a></li>
+      </ul>
+    </div>
+    <div>
+      <h2>Handbook</h2>
+      <ul>
+        <li><a href="/handbook">Overview</a></li>
+        <li><a href="/handbook/safety-and-quality">Safety and quality</a></li>
+        <li><a href="/handbook/what-happens-when">What happens when…</a></li>
+        <li><a href="/handbook/secure-your-repository">Secure your repository</a></li>
+        <li><a href="/handbook/templates">Templates</a></li>
       </ul>
     </div>
     <div>
       <h2>About</h2>
       <ul>
-        <li><a href="/how-it-works">How it works</a></li>
+        <li><a href="/how-it-works">How the bank works</a></li>
         <li><a href="/about">Who runs this</a></li>
         <li><a href="/faq">Questions</a></li>
-      </ul>
-    </div>
-    <div>
-      <h2>Legal</h2>
-      <ul>
         <li><a href="/privacy">Privacy</a></li>
-        <li><a href="/terms">Terms and volunteer rules</a></li>
+        <li><a href="/terms">Terms and rules</a></li>
         <li><a href="/accessibility">Accessibility</a></li>
       </ul>
     </div>
   </div>
   <div class="wrap footer-note">
-    <p>${SITE.name} is a free, open project in its test phase. Claude, Gemini, Codex, ChatGPT and GitHub are trademarks of their owners, who are not affiliated with this project.</p>
+    <p>${SITE.name} is free and in its test phase. Claude, ChatGPT, Gemini, Grok, Le Chat, Codex, Cursor and GitHub are trademarks of their owners, who are not affiliated with this project.</p>
   </div>
 </footer>
 </body>
