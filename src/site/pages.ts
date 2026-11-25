@@ -733,6 +733,8 @@ const FAQ_GROUPS: { title: string; items: [string, string][] }[] = [
       ['Can I change how many tasks I give?', 'Yes, on your account page, or tell your AI "change my Volunteer Pool limit to 3". 0 pauses volunteering.'],
       ['Is sharing my AI plan allowed?', 'You don\'t share it. Your own AI app does the work on your own account, the normal way you use it. You never give anyone a password or key. Follow your AI provider\'s terms, as you always would.'],
       ['Do I need a GitHub account?', 'Sign-in currently uses GitHub. Email sign-in follows soon, and you can connect GitHub later. Your work reaches the organization through our GitHub App, credited to your public name.'],
+      ['How does my AI know what volunteering means?', 'When you add the connector, our server tells your AI at the start of every chat what Volunteer Pool is, how a task works, and its limits. Each task then brings its own brief, the project\'s rules and our safety rules. <a href="/handbook/volunteers#how-your-ai-knows-what-to-do">More</a>.'],
+      ['Does my AI store the work package?', 'No. The brief and files are read from our server during the task, and your AI\'s changes stay on our server. Nothing is saved on your device or in your AI\'s memory, and the next task starts fresh.'],
       ['How do I start a shift?', `Choose "Start a volunteer shift" from your AI app's menu under the Volunteer Pool connector, or say: "${START_PHRASE}"`],
       ['Where can I see what I did?', 'On your account page, and on your public page once the organization merges your work.'],
     ],

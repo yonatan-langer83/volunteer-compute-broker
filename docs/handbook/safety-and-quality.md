@@ -86,6 +86,8 @@ We can't see inside a volunteer's AI, so we don't take its word for it. We make 
 - the **change** is built by our server from the AI's edits, so it's exactly what was made, and can only touch files in the plan;
 - the **evidence** is checked against the acceptance criteria by the reviewer, with the test output beside it.
 
+Your AI can't edit the brief: it lives on our server, and the AI only sends a plan, its edits and its evidence. It doesn't keep a copy either, so every task starts from the current brief.
+
 If the plan, the change and the brief don't line up, it shows on one page, and the reviewer closes it.
 
 ## Keeping organizations from being flooded with poor work

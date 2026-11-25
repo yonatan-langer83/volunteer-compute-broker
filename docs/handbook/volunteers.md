@@ -21,7 +21,7 @@ Pick **Start a volunteer shift** from your AI app's menu, under the Volunteer Po
 
 > Use Volunteer Pool to give me 1 small volunteer task.
 
-Naming Volunteer Pool tells your AI which connection to use. Then your AI:
+Naming Volunteer Pool tells your AI which connection to use. With only this connector, "I'm ready for a small volunteer task" usually works too. Then your AI:
 
 1. asks the pool for a task that fits (small to start);
 2. reads the organization's brief and the project's files;
@@ -31,6 +31,23 @@ Naming Volunteer Pool tells your AI which connection to use. Then your AI:
 6. hands in, with evidence for each acceptance criterion.
 
 It tells you briefly what it's doing at each step. A small task usually takes 10 to 30 minutes.
+
+## How your AI knows what to do
+
+When you add the Volunteer Pool connector, our server introduces itself to your AI at the start of every chat. It says what volunteering means here, how a task works, and what the AI may and may not do. That's how your AI understands "give me a volunteer task", the same way it understands a calendar connector.
+
+Each task comes with everything needed, fetched live from our server:
+
+- **the brief:** goal, files, steps, acceptance criteria, checks and limits;
+- **the project's own rules**, from its `AGENTS.md` file;
+- **our safety rules**, which outrank everything else;
+- **the project's files**, read one at a time as needed.
+
+## Nothing is stored with you
+
+Your AI doesn't download or save the work package, and nothing goes into its memory. The brief and files are read from our server during the task. Your AI's changes are kept on our server, not on your phone or computer. When the chat ends, it forgets. The next task starts fresh with a new brief, so an old or altered copy can never be reused.
+
+The one exception is coding tools on your computer, which work on their own copy of the project. They're bound by the same plan, file and evidence rules when they hand in.
 
 ## How much of your AI plan it uses
 
