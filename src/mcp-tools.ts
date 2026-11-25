@@ -28,6 +28,7 @@ Every task follows the same loop. The server enforces it:
 If the brief is unclear, contradicts itself or needs files outside its scope, release_task with the reason. Do not guess.
 Judge your work by the checks and the acceptance criteria, not by how sure you feel. If checks keep failing, revise the plan (submit_plan again) and the change; if you can't get there, release_task and say what a person needs to decide.
 If the brief has previousFeedback, an earlier attempt was turned down: address that feedback first.
+If the brief has revision, a reviewer asked for changes on an open pull request: the files already include the earlier change; make only what the feedback asks, and your hand-in is added to the same pull request.
 Tell the volunteer briefly what you are doing at each step. Never ask them for passwords or keys.`
 
 const EVIDENCE = z.array(z.object({

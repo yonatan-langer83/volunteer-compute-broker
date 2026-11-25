@@ -30,11 +30,13 @@ export type ManifestTask = {
   dependsOn: string[]
   provider?: ProviderId
   estimatedCostUsd: number
+  // Set for tasks that come from a GitHub issue
+  issueNumber?: number
 }
 
 export type Manifest = {
   schemaVersion: 1
-  project: { name: string; github?: string; nonprofit: boolean; orgUrl?: string; checks?: ProjectChecks; cause?: Cause; summary?: string }
+  project: { name: string; github?: string; nonprofit: boolean; orgUrl?: string; checks?: ProjectChecks; cause?: Cause; summary?: string; preview?: string; volunteerReviewers?: boolean }
   tasks: ManifestTask[]
 }
 
@@ -64,17 +66,17 @@ export function loadManifest(filePath: string): Manifest {
   return parseManifestYaml(raw)
 }
 
-export function parseManifestYaml(raw: string): Manifest {
+export function parseManifestYaml(raw: string, extraTasks: ManifestTask[] = []): Manifest {
   let document: unknown
   try {
     document = parse(raw)
   } catch {
     throw new ManifestError('manifest is not valid YAML')
   }
-  return validateManifest(document)
+  return validateManifest(document, extraTasks)
 }
 
-export function validateManifest(document: unknown): Manifest {
+export function validateManifest(document: unknown, extraTasks: ManifestTask[] = []): Manifest {
   const errors: string[] = []
   if (!isRecord(document)) throw new ManifestError('manifest must be a YAML mapping')
   if (document.schemaVersion !== 1) errors.push('schemaVersion must be 1')
@@ -125,8 +127,21 @@ export function validateManifest(document: unknown): Manifest {
     if (typeof project.summary === 'string' && project.summary.trim().length > 0 && project.summary.length <= 240) summary = project.summary.trim()
     else errors.push('project.summary must be one sentence, up to 240 characters')
   }
-  if (!Array.isArray(document.tasks) || document.tasks.length === 0) {
-    errors.push('tasks must be a non-empty list')
+  let preview: string | undefined
+  if (project && project.preview != null) {
+    const value = typeof project.preview === 'string' ? project.preview.trim() : ''
+    if (/^https:\/\/[^\s<>"]+$/.test(value) && /\{(branch|pr)\}/.test(value) && value.length <= 200) preview = value
+    else errors.push('project.preview must be an https address containing {branch} or {pr}, for example https://{branch}.my-site.pages.dev')
+  }
+  let volunteerReviewers: boolean | undefined
+  if (project && project.volunteerReviewers != null) {
+    if (typeof project.volunteerReviewers === 'boolean') volunteerReviewers = project.volunteerReviewers
+    else errors.push('project.volunteerReviewers must be true or false')
+  }
+  // Tasks may also come from GitHub issues, so the list itself may be empty.
+  if (document.tasks != null && !Array.isArray(document.tasks)) errors.push('tasks must be a list')
+  if ((!Array.isArray(document.tasks) || document.tasks.length === 0) && extraTasks.length === 0 && document.tasks == null) {
+    errors.push('tasks must be a list (it can be empty if your tasks are GitHub issues)')
   }
   const tasks: ManifestTask[] = []
   const seen = new Set<string>()
@@ -138,6 +153,14 @@ export function validateManifest(document: unknown): Manifest {
       seen.add(parsed.id)
       tasks.push(parsed)
     }
+  }
+  for (const extra of extraTasks) {
+    if (seen.has(extra.id)) {
+      errors.push(`duplicate task id ${extra.id}`)
+      continue
+    }
+    seen.add(extra.id)
+    tasks.push(extra)
   }
   for (const task of tasks) {
     const deps = new Set<string>()
@@ -152,7 +175,7 @@ export function validateManifest(document: unknown): Manifest {
   if (errors.length > 0) throw new ManifestError(errors.join('\n'))
   return {
     schemaVersion: 1,
-    project: { name, nonprofit, ...(github ? { github } : {}), ...(orgUrl ? { orgUrl } : {}), ...(checks ? { checks } : {}), ...(cause ? { cause } : {}), ...(summary ? { summary } : {}) },
+    project: { name, nonprofit, ...(github ? { github } : {}), ...(orgUrl ? { orgUrl } : {}), ...(checks ? { checks } : {}), ...(cause ? { cause } : {}), ...(summary ? { summary } : {}), ...(preview ? { preview } : {}), ...(volunteerReviewers ? { volunteerReviewers } : {}) },
     tasks,
   }
 }
@@ -198,8 +221,15 @@ export function findCycle(tasks: { id: string; dependsOn: string[] }[]): string[
   return null
 }
 
-function parseTask(entry: unknown, index: number, errors: string[]): ManifestTask | null {
-  const label = `tasks[${index}]`
+// One task on its own, e.g. from a GitHub issue, with its own list of problems.
+export function parseTaskEntry(entry: unknown, label: string): { task: ManifestTask | null; errors: string[] } {
+  const errors: string[] = []
+  const task = parseTask(entry, 0, errors, label)
+  return { task: errors.length ? null : task, errors }
+}
+
+function parseTask(entry: unknown, index: number, errors: string[], labelOverride?: string): ManifestTask | null {
+  const label = labelOverride ?? `tasks[${index}]`
   if (!isRecord(entry)) {
     errors.push(`${label} must be a mapping`)
     return null

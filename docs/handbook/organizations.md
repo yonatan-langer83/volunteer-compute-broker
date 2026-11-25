@@ -20,9 +20,16 @@ Volunteer Pool brings you volunteers' AI help, and increasingly programmers' own
 1. **Apply** on the [organizations page](/organizations). We check you're a nonprofit or a public-good open-source project.
 2. **Get onto GitHub**, if you aren't yet. Read [What is GitHub?](/handbook/what-is-github). Verified nonprofits can get GitHub's paid plan free.
 3. **Secure your repository**: [five settings, five minutes](/handbook/secure-your-repository). We check them with you; your account page shows which are on.
-4. **Add two files** to your repository: `volunteer-compute.yaml` (the task list) and `AGENTS.md` (the rules for volunteers' AIs). Start from our [templates](/handbook/templates).
+4. **Add two files** to your repository: `volunteer-compute.yaml` (project settings, and tasks if you like) and `AGENTS.md` (the rules for volunteers' AIs). Add the **volunteer task issue form** too, so staff can write tasks on GitHub without touching YAML. Start from our [templates](/handbook/templates).
 5. **Install our GitHub App** on that repository. It reads the files and opens pull requests. It can't merge, and it refuses any change to your automation settings.
-6. **Write your first three tasks** with us, using the [work package checklist](/handbook/work-packages).
+6. **Write your first three tasks** with us. Pick from the [task menu](/handbook/task-menu), or follow the [work package checklist](/handbook/work-packages).
+
+## Two ways to post work
+
+- **As GitHub issues (easiest).** Open a new issue with the **Volunteer task** form: goal, files, steps, acceptance criteria. When it's ready, a maintainer adds the label `volunteer-ready`. Only that label, added by someone who can merge, publishes it, so issues from strangers never reach volunteers. Closing the issue, or removing the label, takes the task off the board. Merging the volunteer's pull request closes the issue.
+- **In `volunteer-compute.yaml`.** The same fields as a list in a file, useful for many tasks at once.
+
+Both appear within 15 minutes. If an issue is missing something, your account page says what.
 
 ## Writing work: the short version
 
@@ -41,10 +48,36 @@ For each one:
 3. **Look at the warning signs.** Anything listed (new network calls, code that runs commands, install scripts, long encoded strings) needs a careful look.
 4. **Decide:**
    - **Merge** if it's right. The task is done and credited.
-   - **Request changes and close**, with a sentence on what's missing. The task goes back to the pool and the next volunteer sees your feedback.
-   - **Close without a word** only for obvious junk. Feedback improves the next attempt.
+   - **Request changes** with what's missing. The same volunteer gets three days to revise the **same pull request**; after that, any volunteer can continue it. You get a comment when the revision arrives.
+   - **Close** if the approach is wrong. The task goes back to the pool, and the next volunteer sees your feedback.
+   - **Label it `spam` or `invalid` and close** for junk. It counts heavily against the volunteer: one means small tasks only, two means paused.
+
+Only reviews from people with write access to your repository count as decisions.
 
 **Please review within a week.** We remind you on the pull request after 7 days and again after 21. While five or more changes wait for your review, no new work starts on your project. That protects volunteers' time.
+
+## See the change before you merge
+
+For websites, the best review is to look at the changed page. Many hosts make a **preview link for every branch or pull request** for free: Cloudflare Pages, Netlify and others. Turn it on, then add the pattern to your task list, and every volunteer pull request carries a "See it running" link:
+
+```yaml
+project:
+  preview: https://{branch}.your-site.pages.dev          # Cloudflare Pages
+  # preview: https://deploy-preview-{pr}--your-site.netlify.app   # Netlify
+```
+
+Previews build from the pull request's code, so keep secrets out of preview builds (see [Secure your repository](/handbook/secure-your-repository)).
+
+## No developer? Get a volunteer reviewer
+
+Experienced developers volunteer as reviewers. They read volunteer pull requests and leave a review with advice. You still decide and merge. To welcome them, add this to your task list:
+
+```yaml
+project:
+  volunteerReviewers: true
+```
+
+Their advice shows on your account page and in the pull request. It never merges or changes anything by itself.
 
 ## What we do for you
 

@@ -279,6 +279,7 @@ export function volunteerPage(config: SiteConfig): Response {
     ['How much of my AI plan does a task use?', 'About as much as a normal working session of the same length. A small task is roughly one focused conversation of 10 to 30 minutes.'],
     ['Do I need a GitHub account?', 'No. You can sign in with GitHub, and soon with an emailed link. Our GitHub App delivers your work to the organization, credited to your public name.'],
     ['Is it safe for my device?', 'From a chat app, nothing runs on your device: your AI reads and edits through our server, and tests run on our test machine. From a coding tool, the project\'s code runs on your computer to test it, so work in a separate folder.'],
+    ['What if the organization asks for changes?', 'You get the first chance, for three days, to revise the same pull request. Start a shift and your AI picks it up with the reviewer\'s feedback. A change request never counts against you.'],
     ['What if my AI isn\'t sure what to do?', 'It hands the task back with the reason. That helps the organization improve the brief, and never counts against you.'],
   ]
   return page(
@@ -385,6 +386,9 @@ export function organizationsPage(config: SiteConfig, error?: string, values: Re
     ['Can a volunteer\'s AI break something?', 'Only through a pull request you review. It can change only the files a task allows, never your automation, and your checks run first. Nothing changes until you merge.'],
     ['Do we need a developer?', 'For writing tasks, no. For code, someone who can read a change and judge it. If you have nobody, say so when you apply and we\'ll look at it together.'],
     ['What if we get too much to review?', 'While five changes wait on your project, no new work starts there. We remind you after 7 days. You can pause any time.'],
+    ['Do we have to edit files to post tasks?', 'No. Use the volunteer task form on GitHub issues: fill in the goal, files, steps and how to check it. A maintainer adds the <code>volunteer-ready</code> label to publish it. Or pick a ready-made task from the <a href="/handbook/task-menu">task menu</a>.'],
+    ['What if the work is almost right?', 'Request changes on the pull request and say what\'s missing. The same volunteer gets three days to revise the same pull request, then anyone can continue it.'],
+    ['We have no developer. Can someone help review?', 'Yes. Set <code>volunteerReviewers: true</code> and approved volunteer reviewers will leave advice on your pull requests. You still decide what to merge.'],
     ['We\'re not on GitHub. Is that a problem?', 'No. We help you set it up in about an hour. <a href="/handbook/what-is-github">What GitHub is, in plain words</a>.'],
   ]
   return page(
@@ -645,11 +649,30 @@ export function volunteerImpactPage(board: PublicBoard, handle: string, register
     )
   }
   const orgs = [...new Set(done.map((d) => d.p.name))]
+  const causes = [...new Set(done.map((d) => d.p.cause).filter(Boolean) as string[])].map((c) => CAUSE_LABELS[c] ?? c)
+  const dates = done.map((d) => d.t.doneAt).filter(Boolean).sort() as string[]
+  const since = dates[0] ? new Date(dates[0]).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : null
+  const url = `${SITE.origin}/volunteers/${encodeURIComponent(handle)}`
+  const sentence = `${handle} has finished ${done.length} volunteer ${done.length === 1 ? 'task' : 'tasks'} for ${orgs.length} ${orgs.length === 1 ? 'organization' : 'organizations'} with Volunteer Pool.`
   return page(
-    { title: `${handle}, volunteer | ${SITE.name}`, description: `${handle} has finished ${done.length} volunteer tasks.`, path: `/volunteers/${handle}` },
-    `<div class="wrap page-head"><p class="crumb"><a href="/volunteers">Volunteers</a></p><h1>${esc(handle)}</h1>
-<p class="lead">${done.length} ${done.length === 1 ? 'task' : 'tasks'} finished for ${orgs.length} ${orgs.length === 1 ? 'organization' : 'organizations'}: ${orgs.map((o) => `<a href="/projects/${esc(slugify(o))}">${esc(o)}</a>`).join(', ')}.</p></div>
-<section class="wrap section-tight narrow"><h2>Finished tasks</h2><ul class="tasks">${done.map(({ t, p }) => taskRow(t, p, true)).join('')}</ul></section>`,
+    { title: `${handle}'s volunteer impact | ${SITE.name}`, description: sentence, path: `/volunteers/${handle}` },
+    `<div class="wrap page-head"><p class="crumb"><a href="/volunteers">Volunteers</a></p><h1>${esc(handle)}'s volunteer impact</h1>
+<p class="lead">${esc(sentence)}${since ? ` Volunteering since ${esc(since)}.` : ''}</p>
+<p class="actions"><button class="copy" type="button" data-copy="${esc(url)}">Copy link to share</button></p></div>
+<section class="wrap section-tight">
+  <dl class="balance" aria-label="Impact">
+    <div><dt>${done.length === 1 ? 'task finished' : 'tasks finished'}</dt><dd>${done.length}</dd></div>
+    <div><dt>${orgs.length === 1 ? 'organization helped' : 'organizations helped'}</dt><dd>${orgs.length}</dd></div>
+    <div><dt>${causes.length === 1 ? 'cause' : 'causes'}</dt><dd>${causes.length}</dd></div>
+    ${dates[0] ? `<div><dt>volunteering since</dt><dd>${esc(new Date(dates[0]).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }))}</dd></div>` : ''}
+  </dl>
+</section>
+<section class="wrap section-tight narrow">
+  ${causes.length ? `<p><strong>Causes:</strong> ${causes.map(esc).join(', ')}</p>` : ''}
+  <p><strong>Organizations:</strong> ${orgs.map((o) => `<a href="/projects/${esc(slugify(o))}">${esc(o)}</a>`).join(', ')}</p>
+  <h2>Finished tasks</h2><ul class="tasks">${done.map(({ t, p }) => taskRow(t, p, true)).join('')}</ul>
+  <p class="actions"><a class="button" href="/volunteer#start">Volunteer like ${esc(handle)}</a></p>
+</section>`,
   )
 }
 

@@ -216,6 +216,28 @@ export class GitHubApp {
     return true
   }
 
+  // Open issues labelled ready for volunteers, where the label was added by
+  // someone who may merge. Needs the app's Issues (read) permission.
+  async listReadyIssues(owner: string, repo: string, label: string): Promise<{ number: number; title: string; body: string | null; url: string }[]> {
+    const token = await this.installationToken(owner, repo)
+    const issues = await this.call<{ number: number; title: string; body: string | null; html_url: string; pull_request?: unknown }[]>(
+      token, 'GET', `/repos/${owner}/${repo}/issues?state=open&per_page=50&labels=${encodeURIComponent(label)}`,
+    )
+    const ready: { number: number; title: string; body: string | null; url: string }[] = []
+    for (const issue of issues) {
+      if (issue.pull_request) continue
+      const events = await this.call<{ event: string; label?: { name: string }; actor?: { login: string } }[]>(
+        token, 'GET', `/repos/${owner}/${repo}/issues/${issue.number}/events?per_page=100`,
+      )
+      const labelled = events.filter((e) => e.event === 'labeled' && e.label?.name === label).pop()
+      if (!labelled?.actor) continue
+      const permission = await this.collaboratorPermission(owner, repo, labelled.actor.login)
+      if (!['admin', 'maintain', 'write'].includes(permission)) continue
+      ready.push({ number: issue.number, title: issue.title, body: issue.body, url: issue.html_url })
+    }
+    return ready
+  }
+
   async pullRequestBody(owner: string, repo: string, number: number): Promise<{ body: string | null; user: string; url: string } | null> {
     const token = await this.installationToken(owner, repo)
     try {
@@ -295,32 +317,16 @@ export class GitHubApp {
     throw new Error(`GitHub tarball link failed: ${response.status}`)
   }
 
-  async openVolunteerPr(input: {
-    owner: string
-    repo: string
-    taskId: string
-    localId: string
-    title: string
-    volunteer: string
-    summary: string
-    patch: string
-    record?: string
-  }): Promise<string> {
-    const files = parseUnifiedDiff(input.patch)
+  // Builds one commit applying a volunteer's diff on top of baseSha.
+  private async commitPatch(token: string, owner: string, repo: string, baseSha: string, patch: string, message: string, volunteer: string): Promise<string> {
+    const files = parseUnifiedDiff(patch)
     if (files.length === 0) throw new Error('the diff has no files')
     for (const f of files) {
       for (const p of [f.oldPath, f.newPath]) {
         if (p && (p.startsWith('.github/') || p.startsWith('.git/') || p.includes('..'))) throw new Error(`the diff touches ${p}`)
       }
     }
-    const { owner, repo } = input
-    const token = await this.installationToken(owner, repo)
-    const info = await this.call<{ default_branch: string }>(token, 'GET', `/repos/${owner}/${repo}`)
-    const base = info.default_branch
-    const ref = await this.call<{ object: { sha: string } }>(token, 'GET', `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(base)}`)
-    const baseSha = ref.object.sha
     const commit = await this.call<{ tree: { sha: string } }>(token, 'GET', `/repos/${owner}/${repo}/git/commits/${baseSha}`)
-
     const tree: { path: string; mode: '100644'; type: 'blob'; content?: string; sha?: null }[] = []
     for (const file of files) {
       let original: string | null = null
@@ -335,35 +341,116 @@ export class GitHubApp {
       if (file.oldPath && file.newPath !== file.oldPath) tree.push({ path: file.oldPath, mode: '100644', type: 'blob', sha: null })
       if (updated !== null && file.newPath) tree.push({ path: file.newPath, mode: '100644', type: 'blob', content: updated })
     }
-
     const newTree = await this.call<{ sha: string }>(token, 'POST', `/repos/${owner}/${repo}/git/trees`, { base_tree: commit.tree.sha, tree })
-    const message = `[${input.localId}] ${input.title}\n\nVolunteer: ${input.volunteer}, through the volunteer compute broker\nVolunteer-Task: ${input.taskId}`
     const created = await this.call<{ sha: string }>(token, 'POST', `/repos/${owner}/${repo}/git/commits`, {
       message,
       tree: newTree.sha,
       parents: [baseSha],
-      author: { name: `${input.volunteer} (volunteer)`, email: 'volunteers@volunteer.apishelf.dev' },
+      author: { name: `${volunteer} (volunteer)`, email: 'volunteers@volunteer.apishelf.dev' },
     })
-    const branch = `volunteer/${input.localId}-${created.sha.slice(0, 7)}`
-    await this.call(token, 'POST', `/repos/${owner}/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha: created.sha })
-    const body = [
+    return created.sha
+  }
+
+  private prBody(input: { taskId: string; localId: string; title: string; volunteer: string; summary: string; record?: string; closesIssue?: number | null }) {
+    return [
       `**Volunteer task:** \`${input.localId}\` — ${input.title}`,
       `**Volunteer:** ${input.volunteer}`,
+      ...(input.closesIssue ? [`**Task issue:** closes #${input.closesIssue}`] : []),
       '',
       ...(input.record ? [input.record.slice(0, 60_000)] : ['### What the volunteer reports', '', input.summary.slice(0, 60_000)]),
       '',
-      '**Merging this pull request marks the task done on [volunteer.apishelf.dev](https://volunteer.apishelf.dev/). Closing it without merging sends the task back to the pool.**',
+      '**Merging this pull request marks the task done on [volunteer.apishelf.dev](https://volunteer.apishelf.dev/). Request changes to have it revised; close it without merging to send the task back to the pool.**',
       '',
       `<!-- volunteer-task: ${input.taskId} -->`,
     ].join('\n')
-    const pr = await this.call<{ html_url: string }>(token, 'POST', `/repos/${owner}/${repo}/pulls`, {
+  }
+
+  async openVolunteerPr(input: {
+    owner: string
+    repo: string
+    taskId: string
+    localId: string
+    title: string
+    volunteer: string
+    summary: string
+    patch: string
+    record?: string
+    closesIssue?: number | null
+  }): Promise<string> {
+    const { owner, repo } = input
+    const token = await this.installationToken(owner, repo)
+    const info = await this.call<{ default_branch: string }>(token, 'GET', `/repos/${owner}/${repo}`)
+    const base = info.default_branch
+    const ref = await this.call<{ object: { sha: string } }>(token, 'GET', `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(base)}`)
+    const message = `[${input.localId}] ${input.title}\n\nVolunteer: ${input.volunteer}, through Volunteer Pool\nVolunteer-Task: ${input.taskId}`
+    const sha = await this.commitPatch(token, owner, repo, ref.object.sha, input.patch, message, input.volunteer)
+    const branch = `volunteer/${input.localId}-${sha.slice(0, 7)}`
+    await this.call(token, 'POST', `/repos/${owner}/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha })
+    const body = fillPreview(this.prBody(input), branch, null)
+    const pr = await this.call<{ html_url: string; number: number }>(token, 'POST', `/repos/${owner}/${repo}/pulls`, {
       title: `[${input.localId}] ${input.title}`,
       head: branch,
       base,
       body,
     })
+    if (body.includes('{pr}')) {
+      await this.call(token, 'PATCH', `/repos/${owner}/${repo}/pulls/${pr.number}`, { body: fillPreview(body, branch, pr.number) })
+    }
     return pr.html_url
   }
+
+  // A revision after "request changes": one more commit on the same pull
+  // request's branch, an updated description, and a comment for the reviewer.
+  async reviseVolunteerPr(input: {
+    prUrl: string
+    taskId: string
+    localId: string
+    title: string
+    volunteer: string
+    summary: string
+    patch: string
+    record?: string
+    closesIssue?: number | null
+  }): Promise<string> {
+    const match = input.prUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/)
+    if (!match) throw new Error('not a pull request link')
+    const [, owner, repo, number] = match as unknown as [string, string, string, string]
+    const token = await this.installationToken(owner, repo)
+    const pr = await this.call<{ state: string; head: { ref: string; sha: string }; html_url: string }>(token, 'GET', `/repos/${owner}/${repo}/pulls/${number}`)
+    if (pr.state !== 'open') throw new Error('the pull request is no longer open')
+    const message = `[${input.localId}] Revision: ${input.title}\n\nVolunteer: ${input.volunteer}, through Volunteer Pool\nVolunteer-Task: ${input.taskId}`
+    const sha = await this.commitPatch(token, owner, repo, pr.head.sha, input.patch, message, input.volunteer)
+    await this.call(token, 'PATCH', `/repos/${owner}/${repo}/git/refs/heads/${pr.head.ref.split('/').map(encodeURIComponent).join('/')}`, { sha, force: false })
+    await this.call(token, 'PATCH', `/repos/${owner}/${repo}/pulls/${number}`, { body: fillPreview(this.prBody(input), pr.head.ref, Number(number)) })
+    await this.call(token, 'POST', `/repos/${owner}/${repo}/issues/${number}/comments`, {
+      body: `**Revised by ${input.volunteer}** after your review. The description above has the updated plan and evidence.\n\n${input.summary.slice(0, 3000)}`,
+    })
+    return pr.html_url
+  }
+
+  // The head of a branch, for revising an open pull request.
+  async branchSha(owner: string, repo: string, branch: string): Promise<string> {
+    const token = await this.installationToken(owner, repo)
+    const ref = await this.call<{ object: { sha: string } }>(token, 'GET', `/repos/${owner}/${repo}/git/ref/heads/${branch.split('/').map(encodeURIComponent).join('/')}`)
+    return ref.object.sha
+  }
+
+  async pullRequestHead(prUrl: string): Promise<{ branch: string; sha: string } | null> {
+    const match = prUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/)
+    if (!match) return null
+    const token = await this.installationToken(match[1]!, match[2]!)
+    const pr = await this.call<{ head: { ref: string; sha: string } }>(token, 'GET', `/repos/${match[1]}/${match[2]}/pulls/${match[3]}`)
+    return { branch: pr.head.ref, sha: pr.head.sha }
+  }
+}
+
+// Preview hosts name branch previews by a slug of the branch (Cloudflare Pages:
+// lower case, other characters as dashes) or by pull request number (Netlify).
+export function fillPreview(body: string, branch: string, prNumber: number | null): string {
+  const slug = branch.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 28).replace(/-+$/, '')
+  let out = body.replaceAll('{branch}', slug)
+  if (prNumber !== null) out = out.replaceAll('{pr}', String(prNumber))
+  return out
 }
 
 export function taskIdFromPrBody(body: string | null | undefined): string | null {
@@ -379,7 +466,7 @@ export function appManifest(origin: string) {
     hook_attributes: { url: `${origin}/github/webhook`, active: true },
     redirect_url: `${origin}/setup/github/callback`,
     public: true,
-    default_permissions: { contents: 'write', pull_requests: 'write', metadata: 'read', checks: 'read' },
+    default_permissions: { contents: 'write', pull_requests: 'write', metadata: 'read', checks: 'read', issues: 'read' },
     default_events: ['pull_request', 'pull_request_review', 'check_suite'],
   }
 }

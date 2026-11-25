@@ -69,10 +69,17 @@ A claim lasts 45 minutes (small), 90 (medium) or 180 (large).
 
 ### …your CI fails on the pull request
 **Automatic:** the result is recorded on the task.
-**Organization:** don't merge. Request changes with what's wrong, then close. The task goes back to the pool and the next volunteer sees your feedback.
+**Organization:** don't merge. Request changes with what's wrong. The volunteer revises the same pull request.
 
 ### …it's almost right and needs a small fix
-**Organization:** either push the small fix to the same branch yourself and merge (it's your repository), or request changes and close so another volunteer tries with your feedback. A second round by the same volunteer isn't possible yet.
+**Organization:** request changes and say what's missing. Or push the small fix to the same branch yourself and merge: it's your repository.
+**Automatic:** the pull request stays open. The task goes back to the pool marked as a revision, with your feedback. The volunteer who made it gets the first chance for **three days**, then anyone can continue. Their revision is added to the same pull request, with a comment telling you.
+
+### …you merge while a revision is being worked on
+**Automatic:** the task is done and credited to the volunteer whose work you merged. Anyone working on the revision is released.
+
+### …you close a pull request that's waiting for a revision
+**Automatic:** the revision ends, and the task starts fresh with your feedback for the next volunteer.
 
 ### …nobody reviews it
 **Automatic:** after **7 days** our app posts a friendly reminder on the pull request, and after **21 days** a firmer one. While **5** changes wait on a project, no new work starts there.
@@ -101,7 +108,18 @@ A claim lasts 45 minutes (small), 90 (medium) or 180 (large).
 
 ### …a volunteer keeps sending poor work
 **Automatic:** after 3 turned down (and more turned down than accepted) in 30 days, they get one small task per shift. After 6 turned down with none accepted, they're paused.
-**Organization:** close with a short reason. Tell us about anything that looks deliberate.
+**Organization:** close with a short reason. For junk, add the label `spam` or `invalid` before closing: one spam label means small tasks only, two means paused. Tell us about anything that looks deliberate.
+
+### …a stranger opens an issue with the volunteer task form
+**Automatic:** nothing is published. Only the `volunteer-ready` label, added by someone with write access, puts an issue on the board.
+**Organization:** read it like any request. Add the label only if you want it done.
+
+### …a task issue is missing something
+**Automatic:** it isn't published, and your account page lists what's missing.
+**Organization:** edit the issue. It's checked again within 15 minutes.
+
+### …you have no developer to review
+**Organization:** set `volunteerReviewers: true`. Approved volunteer reviewers leave advice on your pull requests. You still decide.
 
 ## On our side
 

@@ -67,7 +67,9 @@ About as much as a normal working session of the same length. A small task is ro
 
 - It becomes a **pull request** in the organization's repository: a proposed change their people review. It carries your plan, your evidence, the test results and the exact brief you received.
 - **Merged:** the task counts as done and appears on your public page and the project page.
-- **Changes requested, then closed:** the task goes back to the pool with the reviewer's feedback, so the next attempt starts better informed. It doesn't count against you on its own. A pattern does (below).
+- **Changes requested:** you get the **first chance, for three days**, to revise it. Start a shift, and your AI sees the task with the reviewer's feedback and continues the same pull request. A change request never counts against you.
+- **Closed without merging:** the task goes back to the pool with the reviewer's feedback, so the next attempt starts better informed. It counts against you only as a pattern (below).
+- **Labelled spam:** organizations can label junk as spam. That weighs much more: one means small tasks only for a while, two means paused.
 - **No reaction for 7 days:** we remind the organization. You don't need to chase anyone.
 
 ## Your record and your standing
@@ -79,6 +81,10 @@ We look at your last 30 days:
 - **Paused:** after 6 turned down and none accepted. Write to us and we'll look at it together. Usually it's a setting or a tool that needs changing, not you.
 
 Handing a task back with a clear reason never counts against you.
+
+## Your impact page
+
+Every volunteer with merged work gets a public impact page: tasks finished, organizations and causes helped, and a link to every change. Share it on your CV or with friends. Find it on your [account page](/account).
 
 ## Tasks that need a computer
 

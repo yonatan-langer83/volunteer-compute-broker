@@ -26,6 +26,11 @@ export function createPullRequestOpener(store: SqliteStore, masterKey: Buffer, f
       if (!creds || !repo) return null
       return new GitHubApp(creds, fetcher).openVolunteerPr({ ...repo, ...input })
     },
+    async revise(input) {
+      const creds = await loadAppCredentials(store, masterKey)
+      if (!creds) return null
+      return new GitHubApp(creds, fetcher).reviseVolunteerPr(input)
+    },
   }
 }
 
@@ -112,7 +117,7 @@ export async function handleGithubWebhook(broker: Broker, store: SqliteStore, ma
   if (kind === 'pull_request_review') {
     const event = JSON.parse(body) as {
       action: string
-      review: { state: string; body: string | null; html_url: string }
+      review: { state: string; body: string | null; html_url: string; user: { login: string } }
       pull_request: { body: string | null; user: { login: string } }
       repository: { full_name: string }
     }
@@ -121,10 +126,24 @@ export async function handleGithubWebhook(broker: Broker, store: SqliteStore, ma
     const taskId = taskIdFromPrBody(event.pull_request.body)
     const state = event.review.state.toLowerCase()
     if (!taskId || (state !== 'changes_requested' && state !== 'approved')) return Response.json({ ignored: 'review' })
-    return Response.json(await broker.pullRequestSignal({
-      taskId, repository: event.repository.full_name, kind: state as 'changes_requested' | 'approved',
-      detail: event.review.body, url: event.review.html_url,
-    }))
+    const repo = parseRepo(`https://github.com/${event.repository.full_name}`)
+    const reviewer = event.review.user.login
+    const permission = repo ? await new GitHubApp(creds).collaboratorPermission(repo.owner, repo.repo, reviewer) : 'none'
+    const repository = event.repository.full_name
+    // Only people who may merge decide. Their change request starts a revision.
+    if (['admin', 'maintain', 'write'].includes(permission)) {
+      const signal = await broker.pullRequestSignal({ taskId, repository, kind: state as 'changes_requested' | 'approved', detail: event.review.body, url: event.review.html_url })
+      if (state === 'changes_requested') return Response.json({ signal, revision: await broker.requestChanges({ taskId, repository, feedback: event.review.body }) })
+      return Response.json({ signal })
+    }
+    // Approved volunteer reviewers advise; their verdict is shown, never acted on.
+    if (await broker.isVolunteerReviewerFor(taskId, reviewer)) {
+      return Response.json(await broker.pullRequestSignal({
+        taskId, repository, kind: state === 'approved' ? 'advice_approved' : 'advice_changes',
+        detail: `${reviewer}: ${event.review.body ?? ''}`.trim(), url: event.review.html_url,
+      }))
+    }
+    return Response.json({ ignored: 'reviewer' })
   }
   if (kind === 'check_suite') {
     const event = JSON.parse(body) as {
@@ -152,13 +171,15 @@ export async function handleGithubWebhook(broker: Broker, store: SqliteStore, ma
   if (kind !== 'pull_request') return Response.json({ ignored: 'event' })
   const event = JSON.parse(body) as {
     action: string
-    pull_request: { merged: boolean; body: string | null; user: { login: string } }
+    pull_request: { merged: boolean; body: string | null; user: { login: string }; labels?: { name: string }[] }
     repository: { full_name: string }
   }
   if (event.action !== 'closed') return Response.json({ ignored: 'action' })
   if (event.pull_request.user.login !== `${creds.slug}[bot]`) return Response.json({ ignored: 'not_ours' })
   const taskId = taskIdFromPrBody(event.pull_request.body)
   if (!taskId) return Response.json({ ignored: 'no_task' })
-  const result = await broker.pullRequestClosed({ taskId, merged: event.pull_request.merged, repository: event.repository.full_name })
+  // A maintainer can label junk "spam" or "invalid" (as in Hacktoberfest): it weighs heavily on the volunteer's record.
+  const spam = !event.pull_request.merged && (event.pull_request.labels ?? []).some((l) => /spam|invalid/i.test(l.name))
+  const result = await broker.pullRequestClosed({ taskId, merged: event.pull_request.merged, repository: event.repository.full_name, spam })
   return Response.json(result)
 }

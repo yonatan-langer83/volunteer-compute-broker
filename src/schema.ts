@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS projects (
   registered_at INTEGER NOT NULL,
   checks_json TEXT,
   cause TEXT,
-  summary TEXT
+  summary TEXT,
+  preview_url TEXT,
+  volunteer_reviewers INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -46,6 +48,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   kind TEXT NOT NULL DEFAULT 'code',
   needs_computer INTEGER NOT NULL DEFAULT 0,
   paused_reason TEXT,
+  revision_pr TEXT,
+  revision_donor TEXT,
+  revision_until INTEGER,
+  revision_feedback TEXT,
+  issue_number INTEGER,
   UNIQUE (project_id, local_id)
 );
 
@@ -201,7 +208,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   github_login TEXT,
   email TEXT UNIQUE,
   created_at INTEGER NOT NULL,
-  last_login_at INTEGER NOT NULL
+  last_login_at INTEGER NOT NULL,
+  reviewer_status TEXT
 );
 
 CREATE TABLE IF NOT EXISTS account_sessions (
@@ -262,4 +270,12 @@ CREATE TABLE IF NOT EXISTS task_outcomes (
 );
 CREATE INDEX IF NOT EXISTS task_outcomes_task ON task_outcomes(task_id, created_at);
 CREATE INDEX IF NOT EXISTS task_outcomes_donor ON task_outcomes(donor_id, created_at);
+
+CREATE TABLE IF NOT EXISTS sync_notes (
+  project_id TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  message TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (project_id, ref)
+);
 `

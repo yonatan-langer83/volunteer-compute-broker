@@ -31,14 +31,16 @@ The short version: **AI changes who does the work, not who owns the result.** Th
 4. **Change.** The AI edits only the files in its plan, inside the files the task allows.
 5. **Check.** For code, the project's own tests run on our test machine. The AI compares the result with every acceptance criterion. If checks fail, it revises and tries again, or hands the task back.
 6. **Hand in.** A summary, plus evidence for each acceptance criterion. Our server scans the change for warning signs and opens a pull request carrying the whole record.
-7. **Review.** People at the organization look at it, with their own required checks. They merge it, or ask for changes and close it.
-8. **Record.** Merged work is listed publicly with the volunteer's name. Closed work goes back to the pool with the reviewer's feedback, for the next attempt.
+7. **Review.** People at the organization look at it, with their own required checks, and volunteer reviewers can advise. They merge it, or request changes.
+8. **Revise.** After a change request, the same volunteer gets the first chance to fix it on the same pull request.
+9. **Record.** Merged work is listed publicly with the volunteer's name. A pull request closed without merging sends the task back to the pool with the reviewer's feedback.
 
 ## The handbook
 
 - [For volunteers](/handbook/volunteers): what to expect, your rules, and how much of your AI plan it uses.
 - [For organizations](/handbook/organizations): how to prepare, review and stay in charge.
 - [Writing a good work package](/handbook/work-packages): the checklist and a template.
+- [Task menu](/handbook/task-menu): 22 ready-made tasks to pick from.
 - [What is GitHub?](/handbook/what-is-github): in plain words, for organizations new to it.
 - [Secure your repository in 5 minutes](/handbook/secure-your-repository): the settings that make review an enforced gate.
 - [Safety and quality](/handbook/safety-and-quality): how work is checked, how spam is kept out, which AI tools can take part.

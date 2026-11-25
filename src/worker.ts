@@ -11,7 +11,8 @@ import { D1Sql } from './d1-sql.js'
 import { createFakeRegistry } from './fake-provider.js'
 import { GitHubApp, parseRepo } from './github-app.js'
 import { createPullRequestOpener, handleGithubWebhook, handleSetupCallback, handleSetupStart, loadAppCredentials } from './github-routes.js'
-import { parseManifestYaml } from './manifest.js'
+import { issueToTask, READY_LABEL } from './issue-tasks.js'
+import { parseManifestYaml, type ManifestTask } from './manifest.js'
 import { createMcpServer } from './mcp-tools.js'
 import {
   accountAction, accountPage, emailStart, emailVerify, emailVerifyPage, githubCallback, githubStart, signinPage,
@@ -98,7 +99,7 @@ function accountDeps(env: Env, store: SqliteStore): AccountDeps {
   }
 }
 
-const ACCOUNT_ACTIONS = new Set(['volunteer', 'link', 'monthly', 'keys', 'keys/revoke', 'apps/disconnect'])
+const ACCOUNT_ACTIONS = new Set(['volunteer', 'link', 'monthly', 'keys', 'keys/revoke', 'apps/disconnect', 'reviewer'])
 
 async function accountRoutes(request: Request, env: Env, url: URL): Promise<Response | null> {
   const path = url.pathname
@@ -336,6 +337,11 @@ export class BrokerObject extends DurableObject<Env> {
     return Response.json({ ok: true, donorId: donor.id, token })
   }
 
+  private async githubApp(): Promise<GitHubApp | null> {
+    const creds = await loadAppCredentials(this.store!, loadMasterKey(this.env.BROKER_MASTER_KEY))
+    return creds ? new GitHubApp(creds) : null
+  }
+
   private async reader(project: ProjectRecord): Promise<RepoReader | null> {
     const creds = await loadAppCredentials(this.store!, loadMasterKey(this.env.BROKER_MASTER_KEY))
     const repo = parseRepo(project.github)
@@ -346,6 +352,7 @@ export class BrokerObject extends DurableObject<Env> {
       listFiles: (sha) => app.listFiles(repo.owner, repo.repo, sha),
       readFile: (sha, path) => app.readFile(repo.owner, repo.repo, sha, path),
       tarballUrl: (sha) => app.tarballUrl(repo.owner, repo.repo, sha),
+      pullRequestHead: (prUrl) => app.pullRequestHead(prUrl),
     }
   }
 
@@ -377,7 +384,21 @@ export class BrokerObject extends DurableObject<Env> {
         const sha = await reader.headSha()
         const yaml = await reader.readFile(sha, 'volunteer-compute.yaml')
         if (!yaml) continue
-        const manifest = parseManifestYaml(yaml)
+        // Tasks written as GitHub issues join the ones in the file.
+        const issueTasks: ManifestTask[] = []
+        const issueProblems: { issue: number; errors: string[] }[] = []
+        const app = await this.githubApp()
+        const repo = parseRepo(project.github)
+        if (app && repo) {
+          const issues = await app.listReadyIssues(repo.owner, repo.repo, READY_LABEL).catch(() => [])
+          for (const issue of issues) {
+            const parsed = issueToTask(issue)
+            if (parsed.task) issueTasks.push(parsed.task)
+            else issueProblems.push({ issue: issue.number, errors: parsed.errors })
+          }
+          await this.store!.saveSyncNotes(project.id, issueProblems.map((p) => ({ ref: `issue-${p.issue}`, message: p.errors.join('; ') })), Date.now())
+        }
+        const manifest = parseManifestYaml(yaml, issueTasks)
         if (manifest.project.name !== project.name) continue
         const agentsMd = await reader.readFile(sha, 'AGENTS.md')
         results.push(await broker.syncManifest({ manifest, agentsMd }))

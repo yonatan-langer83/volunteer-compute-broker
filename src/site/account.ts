@@ -290,6 +290,9 @@ type OrgProject = {
   name: string; github: string; permission: string; counts: Record<string, number>
   review: { localId: string; title: string; url: string | null; signals: string[] }[]
   protections: Protections
+  paused: { title: string; reason: string }[]
+  revising: { title: string; url: string }[]
+  notes: { ref: string; message: string }[]
 }
 
 async function organizationProjects(deps: AccountDeps, account: AccountRow): Promise<OrgProject[]> {
@@ -308,7 +311,7 @@ async function organizationProjects(deps: AccountDeps, account: AccountRow): Pro
     const review = await Promise.all(tasks.filter((t) => t.state === 'review').map(async (t) => {
       const latest = new Map<string, string>()
       for (const sig of await deps.store.listTaskSignals(t.id)) {
-        const group = sig.kind.startsWith('checks') ? 'checks' : 'review'
+        const group = sig.kind.startsWith('checks') ? 'checks' : sig.kind.startsWith('advice') ? 'advice' : 'review'
         if (!latest.has(group)) latest.set(group, SIGNAL_TEXT[sig.kind] ?? sig.kind)
       }
       return { localId: t.localId, title: t.title, url: t.submissionUrl, signals: [...latest.values()] }
@@ -320,6 +323,9 @@ async function organizationProjects(deps: AccountDeps, account: AccountRow): Pro
       counts,
       review,
       protections: await app.branchProtections(repo.owner, repo.repo).catch(() => null),
+      paused: tasks.filter((t) => t.pausedReason && (t.state === 'open' || t.state === 'blocked')).map((t) => ({ title: t.title, reason: [t.pausedReason, t.failureReason].filter(Boolean).join(' Last feedback: ') })),
+      revising: tasks.filter((t) => t.revisionPr && t.state !== 'review' && t.state !== 'done').map((t) => ({ title: t.title, url: t.revisionPr! })),
+      notes: await deps.store.listSyncNotes(project.id),
     })
   }
   return result
@@ -330,6 +336,8 @@ const SIGNAL_TEXT: Record<string, string> = {
   approved: 'you approved it',
   checks_failed: 'CI failed',
   checks_passed: 'CI passed',
+  advice_approved: 'a volunteer reviewer recommends merging',
+  advice_changes: 'a volunteer reviewer suggests changes',
 }
 
 function protectionList(p: Protections): string {
@@ -384,7 +392,7 @@ export async function accountPage(deps: AccountDeps, request: Request, notice?: 
     <div class="stat"><strong>${projects}</strong><span>projects helped</span></div>
     <div class="stat"><strong>${donor.spentTasks} of ${limit}</strong><span>tasks this month</span></div>
   </div>
-  <p>Your public name is <strong>${esc(donor.handle)}</strong>. <a href="/volunteers/${encodeURIComponent(donor.handle)}">See your public record</a>.</p>
+  <p>Your public name is <strong>${esc(donor.handle)}</strong>. <a href="/volunteers/${encodeURIComponent(donor.handle)}">See and share your impact page</a>.</p>
 
   <h3>Tasks per month</h3>
   <form method="post" action="/account/monthly" class="form inline-form">
@@ -443,11 +451,14 @@ export async function accountPage(deps: AccountDeps, request: Request, notice?: 
     <p class="muted"><a href="https://github.com/${esc(p.github.replace(/^https:\/\/github.com\//, ''))}">${esc(p.github.replace(/^https:\/\/github.com\//, ''))}</a> · you can ${p.permission === 'write' ? 'merge' : 'manage'} it on GitHub</p>
     <p>${Object.entries(p.counts).map(([state, n]) => `<span class="status ${statusLabel(state).cls}">${n} ${esc(statusLabel(state).text.toLowerCase())}</span>`).join(' ') || 'No tasks yet.'}</p>
     ${p.review.length ? `<p><strong>Waiting for your review:</strong></p><ul>${p.review.map((r) => `<li>${r.url ? `<a href="${esc(r.url)}">${esc(r.title)}</a>` : esc(r.title)}${r.signals.length ? ` <span class="muted">(${esc(r.signals.join(', '))})</span>` : ''}</li>`).join('')}</ul>` : ''}
+    ${p.revising.length ? `<p><strong>Being revised after your review:</strong></p><ul>${p.revising.map((r) => `<li><a href="${esc(r.url)}">${esc(r.title)}</a></li>`).join('')}</ul>` : ''}
+    ${p.paused.length ? `<p><strong>Paused, waiting for a better brief:</strong></p><ul>${p.paused.map((r) => `<li>${esc(r.title)}: <span class="muted">${esc(r.reason)}</span></li>`).join('')}</ul>` : ''}
+    ${p.notes.length ? `<p><strong>Task issues that need fixing before they can be published:</strong></p><ul>${p.notes.map((n) => `<li>${esc(n.ref.replace('issue-', 'Issue #'))}: <span class="muted">${esc(n.message)}</span></li>`).join('')}</ul>` : ''}
     <h4>Safety settings on GitHub</h4>
     ${protectionList(p.protections)}
   </article>`).join('')}
   ${applications.length ? `<h3>Applications</h3><ul class="rows">${applications.map((a) => `<li><span><strong>${esc(a.org_name)}</strong> <span class="muted">sent ${date(a.created_at)}</span></span><span class="status">${esc(a.state === 'new' ? 'being reviewed' : a.state)}</span></li>`).join('')}</ul>` : ''}
-  <p class="help">To change a task, edit <code>volunteer-compute.yaml</code> in your repository. Changes show here within 15 minutes.</p>
+  <p class="help">Add tasks as GitHub issues with the <a href="/handbook/templates">volunteer task form</a> and the <code>volunteer-ready</code> label, or in <code>volunteer-compute.yaml</code>. Changes show here within 15 minutes.</p>
 </section>`
     : `<section class="panel" aria-labelledby="o-head">
   <h2 id="o-head">For organizations</h2>
@@ -458,6 +469,7 @@ export async function accountPage(deps: AccountDeps, request: Request, notice?: 
   const connectGithub = !account.github_login && github
     ? `<p><a class="button button-quiet button-small" href="/auth/github?return=%2Faccount">Connect GitHub</a> <span class="muted">to see projects you manage, or to code tasks yourself.</span></p>`
     : ''
+  const reviewer = account.github_login ? await reviewerSection(deps, account) : ''
   return privatePage('Your account', `<div class="wrap page-head narrow">
   <h1>Your account</h1>
   <p class="lead">${esc(who)}</p>
@@ -467,8 +479,40 @@ export async function accountPage(deps: AccountDeps, request: Request, notice?: 
 <div class="wrap section narrow account">
 ${volunteer}
 ${org}
+${reviewer}
 <form method="post" action="/signout"><button class="button button-quiet" type="submit">Sign out</button></form>
 </div>`)
+}
+
+// ---------- volunteer reviewers ----------
+
+async function reviewerSection(deps: AccountDeps, account: AccountRow): Promise<string> {
+  const status = await deps.store.reviewerStatus(account.id)
+  if (status === 'approved') {
+    const queue: string[] = []
+    for (const project of await deps.store.listProjects()) {
+      if (!project.volunteerReviewers) continue
+      for (const task of await deps.store.listTasks(project.id)) {
+        if (task.state !== 'review' || !task.submissionUrl) continue
+        const advice = (await deps.store.listTaskSignals(task.id)).filter((s) => s.kind.startsWith('advice_')).length
+        queue.push(`<li><span><a href="${esc(task.submissionUrl)}">${esc(task.title)}</a> <span class="muted">${esc(project.name)}${advice ? ` · ${advice} advice so far` : ''}</span></span></li>`)
+      }
+    }
+    return `<section class="panel" aria-labelledby="r-head">
+  <h2 id="r-head">Review for organizations</h2>
+  <p>You're a volunteer reviewer. These volunteer pull requests are waiting at organizations that welcome your advice. Open one and leave a review on GitHub: <strong>Approve</strong>, or <strong>Request changes</strong> with what's missing, using the checklist in its description.</p>
+  <p class="help">Your review is advice: it's shown to the organization, and they decide. Never merge, and never ask for access.</p>
+  ${queue.length ? `<ul class="rows">${queue.join('')}</ul>` : '<p class="muted">Nothing is waiting right now.</p>'}
+</section>`
+  }
+  if (status === 'applied') {
+    return `<section class="panel" aria-labelledby="r-head"><h2 id="r-head">Review for organizations</h2><p>Thanks for offering to review. We'll look at your GitHub profile and write to you.</p></section>`
+  }
+  return `<section class="panel" aria-labelledby="r-head">
+  <h2 id="r-head">Review for organizations</h2>
+  <p>Experienced developer? Many nonprofits have nobody who can read code. As a volunteer reviewer you look at volunteers' pull requests and leave advice; the organization still decides.</p>
+  <form method="post" action="/account/reviewer"><button class="button button-quiet" type="submit">Offer to review</button></form>
+</section>`
 }
 
 // ---------- account actions ----------
@@ -503,6 +547,11 @@ export async function accountAction(deps: AccountDeps, request: Request, action:
     if (await deps.store.handleTaken(nickname)) return back(`The name ${nickname} is taken. Please choose another.`)
     const created = await deps.createVolunteer({ nickname, monthly, accountId: account.id })
     return back(created.ok ? `Welcome, ${nickname}. Now connect your AI app.` : created.error)
+  }
+  if (action === 'reviewer') {
+    if (!account.github_login) return back('Connect GitHub first: reviews happen on GitHub.')
+    if (!(await deps.store.reviewerStatus(account.id))) await deps.store.setReviewerStatus(account.id, 'applied')
+    return back('Thanks for offering to review. We will be in touch.')
   }
   if (action === 'link') {
     if (donorId) return back('This account already has a volunteer name.')

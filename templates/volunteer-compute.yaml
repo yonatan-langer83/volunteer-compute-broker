@@ -8,6 +8,8 @@ project:
   cause: community                   # community, education, environment, food, health,
                                      # human-rights, animals, arts-culture, open-source, other
   summary: One sentence about what your organization does.
+  # preview: https://{branch}.your-site.pages.dev   # a preview link per pull request, if your host makes them
+  # volunteerReviewers: true                        # welcome advice from approved volunteer reviewers
   # How our test machine runs your tests on volunteer work (remove for writing-only projects).
   checks:
     setup: npm ci

@@ -125,6 +125,10 @@ export type RecordInput = {
   evidence: Evidence
   patch: string
   checks: { status: string; output?: string | null } | null
+  // True when this hands in a revision of an open pull request
+  revision?: boolean
+  // A link where the reviewer can see the change running, if the project has previews
+  preview?: string | null
 }
 
 const fence = (text: string) => `\`\`\`\n${text.replace(/```/g, '` ` `')}\n\`\`\``
@@ -146,7 +150,9 @@ export function pullRequestRecord(input: RecordInput): string {
   } else {
     lines.push('_No plan was recorded (submitted from a coding tool before plans were required)._', '')
   }
-  lines.push('### Change', '')
+  if (input.revision) lines.push('### Revision', '', 'This revises the pull request after a review asked for changes. The feedback it answers:', '', `> ${(task.revisionFeedback ?? task.failureReason ?? '').replace(/\n/g, ' ')}`, '')
+  lines.push(input.revision ? '### Change in this revision' : '### Change', '')
+  if (input.preview) lines.push(`**See it running:** ${input.preview}`, '')
   lines.push(`Files changed: ${changed.map((p) => `\`${p}\``).join(', ') || 'none'}`)
   lines.push(`Files the task allows: ${allowed.map((p) => `\`${p}\``).join(', ') || 'none'}`)
   lines.push(outside.length ? `**Outside the task:** ${outside.map((p) => `\`${p}\``).join(', ')}` : 'All changes are inside the task.', '')
@@ -173,7 +179,7 @@ export function pullRequestRecord(input: RecordInput): string {
     '- [ ] **Policy:** no secrets, new dependencies or network calls you did not ask for.',
     '- [ ] **Fallback:** if it goes wrong, reverting this pull request is enough.',
     '',
-    'Not right yet? **Request changes** with what is missing, then close the pull request: the task goes back to the pool and the next volunteer sees your feedback. Merge only when your required checks pass.',
+    'Not right yet? **Request changes** and say what is missing: the volunteer revises this same pull request. Close it only if the approach is wrong; the task then goes back to the pool with your feedback. Merge only when your required checks pass.',
     '',
   )
   lines.push('<details><summary>The brief the volunteer received</summary>', '', fence(JSON.stringify(brief, null, 2).slice(0, 20000)), '', `Fingerprint (SHA-256): \`${briefFingerprint(brief)}\``, '', '</details>', '')

@@ -13,6 +13,11 @@ type TaskRow = {
   kind?: string | null
   needs_computer?: number | null
   paused_reason?: string | null
+  revision_pr?: string | null
+  revision_donor?: string | null
+  revision_until?: number | null
+  revision_feedback?: string | null
+  issue_number?: number | null
   id: string
   project_id: string
   local_id: string
@@ -66,6 +71,8 @@ type ProjectRow = {
   checks_json?: string | null
   cause?: string | null
   summary?: string | null
+  preview_url?: string | null
+  volunteer_reviewers?: number | null
   id: string
   name: string
   github: string | null
@@ -80,6 +87,8 @@ export type ProjectInsert = {
   checks?: { setup?: string; run: string } | null
   cause?: string | null
   summary?: string | null
+  previewUrl?: string | null
+  volunteerReviewers?: boolean
   id: string
   name: string
   github: string | null
@@ -93,6 +102,7 @@ export type ProjectInsert = {
 export type TaskInsert = {
   kind?: 'code' | 'writing'
   needsComputer?: boolean
+  issueNumber?: number | null
   id: string
   projectId: string
   localId: string
@@ -142,7 +152,7 @@ const TASK_COLUMNS = `
   scope_do, scope_dont, deliverable, size, provider_override,
   estimated_cost_usd, state, donor_id, lease_until, attempts, result,
   failure_reason, reserved_cost_usd, budget_period, submission_summary,
-  submission_url, submission_patch, safety_status, safety_flags, created_at, updated_at, kind, needs_computer, paused_reason
+  submission_url, submission_patch, safety_status, safety_flags, created_at, updated_at, kind, needs_computer, paused_reason, revision_pr, revision_donor, revision_until, revision_feedback, issue_number
 `
 
 const DONOR_COLUMNS = `
@@ -151,7 +161,7 @@ const DONOR_COLUMNS = `
   terms_accepted_at, key_validated_at, created_at, handle
 `
 
-const PROJECT_COLUMNS = `id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json, cause, summary`
+const PROJECT_COLUMNS = `id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json, cause, summary, preview_url, volunteer_reviewers`
 
 export type AccountRow = { id: string; github_id: string | null; github_login: string | null; email: string | null }
 
@@ -177,7 +187,7 @@ export class SqliteStore {
   async insertProject(project: ProjectInsert, tasks: TaskInsert[]) {
     await this.transaction(async () => {
       await this.sql.run(
-          `INSERT INTO projects (id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json, cause, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [project.id, project.name, project.github, project.orgUrl, project.nonprofit ? 1 : 0, project.repoPath, project.agentsMd, project.registeredAt, project.checks ? JSON.stringify(project.checks) : null, project.cause ?? null, project.summary ?? null])
+          `INSERT INTO projects (id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json, cause, summary, preview_url, volunteer_reviewers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [project.id, project.name, project.github, project.orgUrl, project.nonprofit ? 1 : 0, project.repoPath, project.agentsMd, project.registeredAt, project.checks ? JSON.stringify(project.checks) : null, project.cause ?? null, project.summary ?? null, project.previewUrl ?? null, project.volunteerReviewers ? 1 : 0])
       for (const task of tasks) await this.insertTaskRow(task)
       for (const task of tasks) {
         for (const dependency of task.dependsOn) {
@@ -193,12 +203,12 @@ export class SqliteStore {
         id, project_id, local_id, title, goal, instructions, acceptance, tests,
         scope_do, scope_dont, deliverable, size, provider_override,
         estimated_cost_usd, state, donor_id, lease_until, attempts, result,
-        failure_reason, reserved_cost_usd, safety_status, safety_flags, created_at, updated_at, kind, needs_computer
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, 0, ?, ?, ?, ?, ?, ?)`,
+        failure_reason, reserved_cost_usd, safety_status, safety_flags, created_at, updated_at, kind, needs_computer, issue_number
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, 0, ?, ?, ?, ?, ?, ?, ?)`,
       [task.id, task.projectId, task.localId, task.title, task.goal, task.instructions, task.acceptance, task.tests,
         JSON.stringify(task.scopeDo), JSON.stringify(task.scopeDont), task.deliverable, task.size, task.providerOverride,
         task.estimatedCostUsd, task.state, task.safetyStatus, JSON.stringify(task.safetyFlags), task.createdAt, task.createdAt,
-        task.kind ?? 'code', task.needsComputer ? 1 : 0],
+        task.kind ?? 'code', task.needsComputer ? 1 : 0, task.issueNumber ?? null],
     )
   }
 
@@ -206,12 +216,12 @@ export class SqliteStore {
 
   async updateProjectFromManifest(projectId: string, fields: {
     github: string | null; orgUrl: string | null; nonprofit: boolean; agentsMd: string | null; checks: { setup?: string; run: string } | null
-    cause?: string | null; summary?: string | null
+    cause?: string | null; summary?: string | null; previewUrl?: string | null; volunteerReviewers?: boolean
   }) {
     await this.ready
     await this.sql.run(
-      `UPDATE projects SET github = ?, org_url = ?, nonprofit = ?, agents_md = ?, checks_json = ?, cause = ?, summary = ? WHERE id = ?`,
-      [fields.github, fields.orgUrl, fields.nonprofit ? 1 : 0, fields.agentsMd, fields.checks ? JSON.stringify(fields.checks) : null, fields.cause ?? null, fields.summary ?? null, projectId],
+      `UPDATE projects SET github = ?, org_url = ?, nonprofit = ?, agents_md = ?, checks_json = ?, cause = ?, summary = ?, preview_url = ?, volunteer_reviewers = ? WHERE id = ?`,
+      [fields.github, fields.orgUrl, fields.nonprofit ? 1 : 0, fields.agentsMd, fields.checks ? JSON.stringify(fields.checks) : null, fields.cause ?? null, fields.summary ?? null, fields.previewUrl ?? null, fields.volunteerReviewers ? 1 : 0, projectId],
     )
   }
 
@@ -990,6 +1000,47 @@ export class SqliteStore {
       { kind: string; detail: string | null; url: string | null; created_at: number }[]
   }
 
+  // ---------- revisions ----------
+
+  async setRevision(taskId: string, prUrl: string, donorId: string | null, until: number, feedback: string) {
+    await this.sql.run(`UPDATE tasks SET revision_pr = ?, revision_donor = ?, revision_until = ?, revision_feedback = ? WHERE id = ?`, [prUrl, donorId, until, feedback.slice(0, 2000), taskId])
+  }
+
+  async noteFeedback(taskId: string, reason: string) {
+    await this.sql.run(`UPDATE tasks SET failure_reason = ? WHERE id = ?`, [reason.slice(0, 500), taskId])
+  }
+
+  async clearRevision(taskId: string) {
+    await this.sql.run(`UPDATE tasks SET revision_pr = NULL, revision_donor = NULL, revision_until = NULL, revision_feedback = NULL WHERE id = ?`, [taskId])
+  }
+
+  // A merge can arrive while a revision is open or being worked on: the task
+  // is done, credited to the volunteer whose work was merged.
+  async markMergedDone(taskId: string, creditDonorId: string | null, now: number) {
+    return this.transaction(async () => {
+      await this.rollLocked(now)
+      const task = await this.taskRow(taskId)
+      if (!task) return { ok: false, reason: 'not_found' }
+      const next = transition(toSnapshot(task), { type: 'merged', creditDonorId }, { maxAttempts: this.maxAttempts })
+      if (!next.ok) return { ok: false, reason: next.error }
+      if (!await this.writeTaskLocked(task, next, now)) return { ok: false, reason: 'conflict' }
+      return { ok: true }
+    })
+  }
+
+  // Replaces a project's notes with the latest ones.
+  async saveSyncNotes(projectId: string, notes: { ref: string; message: string }[], now: number) {
+    await this.sql.run(`DELETE FROM sync_notes WHERE project_id = ?`, [projectId])
+    for (const note of notes.slice(0, 50)) {
+      await this.sql.run(`INSERT INTO sync_notes (project_id, ref, message, updated_at) VALUES (?, ?, ?, ?)`, [projectId, note.ref, note.message.slice(0, 1000), now])
+    }
+  }
+
+  async listSyncNotes(projectId: string) {
+    await this.ready
+    return await this.sql.all(`SELECT ref, message FROM sync_notes WHERE project_id = ? ORDER BY ref`, [projectId]) as { ref: string; message: string }[]
+  }
+
   // ---------- outcomes and routines ----------
 
   async recordOutcome(row: { id: string; taskId: string; donorId: string | null; outcome: string; reason: string | null }, now: number) {
@@ -1014,7 +1065,7 @@ export class SqliteStore {
       [donorId, since],
     ) as { outcome: string; n: number }[]
     const count = (o: string) => Number(rows.find((r) => r.outcome === o)?.n ?? 0)
-    return { accepted: count('accepted'), rejected: count('rejected'), released: count('released'), expired: count('expired') }
+    return { accepted: count('accepted'), rejected: count('rejected'), released: count('released'), expired: count('expired'), spam: count('spam') }
   }
 
   async pauseTask(taskId: string, reason: string) {
@@ -1112,6 +1163,21 @@ export class SqliteStore {
   // Links a volunteer name to an account, only if it has no account yet.
   async linkDonorToAccount(donorId: string, accountId: string) {
     return await this.sql.run(`UPDATE donors SET account_id = ? WHERE id = ? AND account_id IS NULL`, [accountId, donorId])
+  }
+
+  async isApprovedReviewer(githubLogin: string) {
+    await this.ready
+    return !!(await this.sql.get(`SELECT 1 AS ok FROM accounts WHERE lower(github_login) = lower(?) AND reviewer_status = 'approved'`, [githubLogin]))
+  }
+
+  async setReviewerStatus(accountId: string, status: 'applied' | 'approved' | null) {
+    await this.sql.run(`UPDATE accounts SET reviewer_status = ? WHERE id = ?`, [status, accountId])
+  }
+
+  async reviewerStatus(accountId: string) {
+    await this.ready
+    const row = await this.sql.get(`SELECT reviewer_status FROM accounts WHERE id = ?`, [accountId]) as { reviewer_status: string | null } | undefined
+    return row?.reviewer_status ?? null
   }
 
   async getSigninApp() {
@@ -1216,6 +1282,11 @@ function taskFromRow(row: TaskRow): TaskRecord {
     kind: row.kind === 'writing' ? 'writing' : 'code',
     needsComputer: row.needs_computer === 1,
     pausedReason: row.paused_reason ?? null,
+    revisionPr: row.revision_pr ?? null,
+    revisionDonor: row.revision_donor ?? null,
+    revisionUntil: row.revision_until ?? null,
+    revisionFeedback: row.revision_feedback ?? null,
+    issueNumber: row.issue_number ?? null,
   }
 }
 
@@ -1255,6 +1326,8 @@ function projectFromRow(row: ProjectRow): ProjectRecord {
     checks: parseChecks(row.checks_json),
     cause: row.cause ?? null,
     summary: row.summary ?? null,
+    previewUrl: row.preview_url ?? null,
+    volunteerReviewers: row.volunteer_reviewers === 1,
   }
 }
 

@@ -53,6 +53,20 @@ export type PullRequestOpener = {
     summary: string
     patch: string
     record?: string
+    closesIssue?: number | null
+  }): Promise<string | null>
+  // Adds a revision to an open volunteer pull request.
+  revise?(input: {
+    project: ProjectRecord
+    prUrl: string
+    taskId: string
+    localId: string
+    title: string
+    volunteer: string
+    summary: string
+    patch: string
+    record?: string
+    closesIssue?: number | null
   }): Promise<string | null>
 }
 
@@ -67,6 +81,14 @@ const consoleLogger: Logger = {
   error(message) {
     console.error(message)
   },
+}
+
+// A project's preview pattern, e.g. https://{branch}.my-site.pages.dev, filled
+// in for this task. Cloudflare Pages and Netlify make one per branch.
+// {branch} and {pr} are filled in by the GitHub App once the pull request exists.
+export function previewFor(pattern: string | null, task: { localId: string }): string | null {
+  if (!pattern) return null
+  return pattern.replaceAll('{task}', task.localId)
 }
 
 export class Broker {
@@ -139,6 +161,7 @@ export class Broker {
         localId: task.id,
         kind: task.kind ?? 'code',
         needsComputer: task.needsComputer ?? false,
+        issueNumber: task.issueNumber ?? null,
         title: task.title,
         goal: task.goal,
         instructions: task.instructions,
@@ -180,6 +203,8 @@ export class Broker {
         checks: manifest.project.checks ?? null,
         cause: manifest.project.cause ?? null,
         summary: manifest.project.summary ?? null,
+        previewUrl: manifest.project.preview ?? null,
+        volunteerReviewers: manifest.project.volunteerReviewers ?? false,
       },
       tasks,
     )
@@ -212,6 +237,8 @@ export class Broker {
       checks: input.manifest.project.checks ?? null,
       cause: input.manifest.project.cause ?? null,
       summary: input.manifest.project.summary ?? null,
+      previewUrl: input.manifest.project.preview ?? null,
+      volunteerReviewers: input.manifest.project.volunteerReviewers ?? false,
     })
     const existing = new Map((await this.store.listTasks(project.id)).map((task) => [task.id, task]))
     const built = this.buildTasks(project.id, input.manifest, input.agentsMd, this.now())
@@ -503,6 +530,9 @@ export class Broker {
       return { ok: false, reason: 'project_not_supported' }
     }
     if (existing.pausedReason) return { ok: false, reason: 'task_paused' }
+    if (existing.revisionDonor && existing.revisionDonor !== donorId && (existing.revisionUntil ?? 0) > this.now()) {
+      return { ok: false, reason: 'reserved_for_revision' }
+    }
     if (((await this.store.reviewCounts()).get(existing.projectId) ?? 0) >= POLICY.reviewCap) return { ok: false, reason: 'organization_review_backlog' }
     const donor = await this.store.getDonor(donorId)
     if (donor?.kind === 'mcp') {
@@ -667,6 +697,7 @@ export class Broker {
       if (session && task.size !== session.size) return false
       if (session && !session.hasComputer && task.needsComputer) return false
       if ((reviewCounts.get(task.projectId) ?? 0) >= POLICY.reviewCap) return false
+      if (task.revisionDonor && task.revisionDonor !== donorId && (task.revisionUntil ?? 0) > now) return false
       const project = projects.get(task.projectId)
       return (
         explainTaskFit({
@@ -729,7 +760,13 @@ export class Broker {
       },
       rules: [...VOLUNTEER_RULES],
       workflow: [...WORKFLOW],
-      previousFeedback: task.failureReason ?? null,
+      previousFeedback: task.revisionFeedback ?? task.failureReason ?? null,
+      revision: task.revisionPr
+        ? {
+          pullRequest: task.revisionPr,
+          note: 'A reviewer asked for changes on this pull request. You continue it: the project files you see already include the earlier change. Address previousFeedback, keep everything else, and hand in as usual; your change is added to the same pull request.',
+        }
+        : null,
       briefFingerprint: briefFingerprint(canonicalBrief(task, agentsMd)),
       plan: await this.planFor(donorId, taskId),
     }
@@ -833,10 +870,13 @@ export class Broker {
         evidence: validateEvidence(extra.evidence),
         patch,
         checks: saved?.check_status ? { status: saved.check_status, output: extra.checkOutput ?? null } : null,
+        revision: !!task.revisionPr,
+        preview: previewFor(project.previewUrl, task),
       })
-      const url = await this.pullRequests!.open({
-        project, taskId, localId: task.localId, title: task.title, volunteer, summary, patch, record,
-      })
+      const pr = { project, taskId, localId: task.localId, title: task.title, volunteer, summary, patch, record, closesIssue: task.issueNumber }
+      const url = task.revisionPr && this.pullRequests!.revise
+        ? await this.pullRequests!.revise({ ...pr, prUrl: task.revisionPr })
+        : await this.pullRequests!.open(pr)
       if (url) await this.store.recordResultUrl(taskId, url)
       return url
     } catch (error) {
@@ -865,7 +905,7 @@ export class Broker {
   // GitHub's own signals on a volunteer pull request: review verdicts and CI
   // results. They are kept on the task, shown to the organization, and passed
   // to the next volunteer if the pull request is closed.
-  async pullRequestSignal(input: { taskId: string; repository: string; kind: 'changes_requested' | 'approved' | 'checks_failed' | 'checks_passed'; detail: string | null; url: string | null }) {
+  async pullRequestSignal(input: { taskId: string; repository: string; kind: 'changes_requested' | 'approved' | 'checks_failed' | 'checks_passed' | 'advice_approved' | 'advice_changes'; detail: string | null; url: string | null }) {
     const task = await this.store.getTask(input.taskId)
     if (!task) return { ok: false as const, reason: 'not_found' }
     const project = await this.store.getProject(task.projectId)
@@ -875,16 +915,70 @@ export class Broker {
     return { ok: true as const }
   }
 
-  async pullRequestClosed(input: { taskId: string; merged: boolean; repository: string }) {
+  async pullRequestClosed(input: { taskId: string; merged: boolean; repository: string; spam?: boolean }) {
     const task = await this.store.getTask(input.taskId)
     if (!task) return { ok: false as const, reason: 'not_found' }
     const project = await this.store.getProject(task.projectId)
     const repo = project?.github?.match(/github\.com\/([^/]+\/[^/#?]+?)(?:\.git)?\/?$/)?.[1]
     if (!repo || repo.toLowerCase() !== input.repository.toLowerCase()) return { ok: false as const, reason: 'wrong_repository' }
-    if (task.state !== 'review') return { ok: false as const, reason: 'not_review' }
-    return input.merged
-      ? this.acceptSubmission(input.taskId)
-      : this.rejectSubmission(input.taskId, await this.closingFeedback(input.taskId))
+    if (task.state === 'review') {
+      const author = task.donorId
+      const result = input.merged
+        ? await this.acceptSubmission(input.taskId)
+        : await this.rejectSubmission(input.taskId, await this.closingFeedback(input.taskId))
+      if (input.spam && result.ok) {
+        await this.store.recordOutcome({ id: randomUUID(), taskId: input.taskId, donorId: author, outcome: 'spam', reason: 'labelled spam or invalid by the maintainer' }, this.now())
+      }
+      if (!input.merged && result.ok) await this.store.clearRevision(input.taskId)
+      return result
+    }
+    // Closed or merged while a revision was waiting or being worked on.
+    if (!task.revisionPr) return { ok: false as const, reason: 'not_review' }
+    if (input.merged) {
+      const credit = task.revisionDonor
+      const result = await this.store.markMergedDone(input.taskId, credit, this.now())
+      if (result.ok) {
+        await this.store.clearRevision(input.taskId)
+        await this.store.recordOutcome({ id: randomUUID(), taskId: input.taskId, donorId: credit, outcome: 'accepted', reason: 'merged after a change request' }, this.now())
+      }
+      return result
+    }
+    const feedback = await this.closingFeedback(input.taskId)
+    if ((task.state === 'claimed' || task.state === 'running') && task.donorId) {
+      await this.store.release(input.taskId, task.donorId, this.now(), 'The pull request you were revising was closed.')
+    }
+    await this.store.clearRevision(input.taskId)
+    await this.store.noteFeedback(input.taskId, feedback)
+    await this.store.recordOutcome({ id: randomUUID(), taskId: input.taskId, donorId: task.revisionDonor, outcome: 'rejected', reason: feedback }, this.now())
+    await this.pauseIfReturnedTooOften(input.taskId)
+    return { ok: true as const }
+  }
+
+  // Is this GitHub user an approved volunteer reviewer, on a project that welcomes them?
+  async isVolunteerReviewerFor(taskId: string, githubLogin: string): Promise<boolean> {
+    const task = await this.store.getTask(taskId)
+    const project = task ? await this.store.getProject(task.projectId) : null
+    if (!project?.volunteerReviewers) return false
+    return this.store.isApprovedReviewer(githubLogin)
+  }
+
+  // A reviewer with write access asked for changes. The pull request stays
+  // open, the task goes back to the pool with the feedback, and the volunteer
+  // who made the change gets the first chance to revise it.
+  async requestChanges(input: { taskId: string; repository: string; feedback: string | null }) {
+    const task = await this.store.getTask(input.taskId)
+    if (!task) return { ok: false as const, reason: 'not_found' }
+    const project = await this.store.getProject(task.projectId)
+    const repo = project?.github?.match(/github\.com\/([^/]+\/[^/#?]+?)(?:\.git)?\/?$/)?.[1]
+    if (!repo || repo.toLowerCase() !== input.repository.toLowerCase()) return { ok: false as const, reason: 'wrong_repository' }
+    if (task.state !== 'review' || !task.submissionUrl) return { ok: false as const, reason: 'not_review' }
+    const author = task.donorId
+    const reason = `Changes requested: ${(input.feedback ?? '').trim() || 'see the review on the pull request.'}`.slice(0, 500)
+    const result = await this.store.reject(input.taskId, reason, this.now())
+    if (!result.ok) return { ok: false as const, reason: result.reason }
+    await this.store.setRevision(input.taskId, task.submissionUrl, author, this.now() + POLICY.revisionFirstChanceMs, reason)
+    await this.store.recordOutcome({ id: randomUUID(), taskId: input.taskId, donorId: author, outcome: 'changes_requested', reason }, this.now())
+    return { ok: true as const }
   }
 
   private async closingFeedback(taskId: string): Promise<string> {

@@ -5,7 +5,7 @@ description: The checklist and template for tasks volunteers' AIs can do well, a
 
 # Writing a good work package
 
-A work package is one task in your `volunteer-compute.yaml`. Think of briefing a capable new volunteer on their first day. They want to help, they follow instructions exactly, and they don't know your organization. Tell them the outcome, show them where, set the limits, and say how you'll check it.
+A work package is one task: a GitHub issue made with the **Volunteer task** form, or an entry in your `volunteer-compute.yaml`. Need ideas? See the [task menu](/handbook/task-menu). Think of briefing a capable new volunteer on their first day. They want to help, they follow instructions exactly, and they don't know your organization. Tell them the outcome, show them where, set the limits, and say how you'll check it.
 
 The same brief goes, word for word, to every volunteer's AI, and its fingerprint appears in the pull request. So a good brief is your strongest quality control.
 
@@ -48,6 +48,8 @@ project:
   cause: food                         # community, education, environment, food, health,
                                       # human-rights, animals, arts-culture, open-source, other
   summary: A food bank's volunteer shift planner.
+  preview: https://{branch}.harbor.pages.dev   # optional: preview link per pull request
+  volunteerReviewers: true            # optional: welcome advice from volunteer reviewers
   checks:                             # how our test machine runs your tests
     setup: python -m pip install -q -e ".[dev]"
     run: python -m pytest -q

@@ -12,7 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = path.join(root, 'src/site/handbook-content.ts')
 
 // Order of the handbook pages in navigation.
-const ORDER = ['index', 'volunteers', 'organizations', 'work-packages', 'what-is-github', 'secure-your-repository', 'safety-and-quality', 'what-happens-when', 'github-best-practice', 'open-source']
+const ORDER = ['index', 'volunteers', 'organizations', 'work-packages', 'task-menu', 'what-is-github', 'secure-your-repository', 'safety-and-quality', 'what-happens-when', 'github-best-practice', 'open-source']
 
 const TEMPLATES = [
   ['volunteer-compute.yaml', 'The task list, at the root of your repository.'],
@@ -20,6 +20,7 @@ const TEMPLATES = [
   ['.github/CODEOWNERS', 'Who must review which files.'],
   ['.github/workflows/tests.yml', 'Tests on every pull request, without secrets.'],
   ['.github/pull_request_template.md', 'The same record for pull requests opened by people.'],
+  ['.github/ISSUE_TEMPLATE/volunteer-task.yml', 'An issue form for writing tasks on GitHub, without editing YAML. A maintainer adds the volunteer-ready label to publish one.'],
 ]
 
 const slug = (text) => text.toLowerCase().replace(/<[^>]+>/g, '').replace(/&[a-z#0-9]+;/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')

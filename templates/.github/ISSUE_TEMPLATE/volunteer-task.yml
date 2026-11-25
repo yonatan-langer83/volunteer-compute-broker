@@ -1,0 +1,89 @@
+name: Volunteer task
+description: A small, checkable task for Volunteer Pool volunteers. A maintainer adds the volunteer-ready label to publish it.
+title: "[Volunteer task]: "
+labels: ["volunteer-task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One small outcome that a reviewer can check. Tips: https://volunteer.apishelf.dev/handbook/work-packages
+        Never include passwords, personal data or access to live systems.
+        **Nothing is published until a maintainer adds the `volunteer-ready` label.**
+  - type: input
+    id: goal
+    attributes:
+      label: Goal
+      description: The outcome in one sentence.
+      placeholder: The sign-up form fits a 360-pixel-wide phone screen without sideways scrolling.
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      options:
+        - Small (one sitting, a few files)
+        - Medium
+        - Large
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of work
+      options:
+        - Code
+        - Writing (documentation, translation, research notes)
+      default: 0
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files to change
+      description: One path per line. Volunteers can change only these. Write "(new file)" after files to create.
+      placeholder: |
+        site/signup.html
+        site/signup.css
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: What to change, in order. Mention each file above.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What must be true when it's done, so a reviewer can check it.
+    validations:
+      required: true
+  - type: input
+    id: check
+    attributes:
+      label: Check command
+      description: For code, the command that tests it (optional for writing).
+      placeholder: npm test
+  - type: textarea
+    id: limits
+    attributes:
+      label: Do not
+      description: Limits, one per line.
+      value: |
+        Do not add a dependency.
+        Do not change other features.
+  - type: input
+    id: deliverable
+    attributes:
+      label: What you get back
+      description: Optional. For example, "A change to site/signup.html and site/signup.css."
+  - type: checkboxes
+    id: computer
+    attributes:
+      label: Needs a computer
+      options:
+        - label: This task can only be done on the volunteer's own computer (not in a chat app).

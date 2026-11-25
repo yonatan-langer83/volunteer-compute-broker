@@ -10,6 +10,7 @@ import type { TaskState } from './types.js'
 //   claimed --submit--> review
 //   review --accept--> done
 //   review --reject--> open
+//   open | claimed | running | review --merged--> done   (the pull request was merged)
 //   running --succeed--> done
 //   running --fail--> failed
 //   running --lease_expired | release--> open
@@ -44,6 +45,7 @@ export type TaskEvent =
   | { type: 'submit'; donorId: string }
   | { type: 'accept' }
   | { type: 'reject'; reason: string }
+  | { type: 'merged'; creditDonorId: string | null }
   | { type: 'retry'; depsDone: boolean }
 
 export type TransitionError =
@@ -184,6 +186,17 @@ export function transition(
           reservedCostUsd: 0,
         },
         release(task),
+      )
+
+    case 'merged':
+      if (task.state === 'review') {
+        return accept(task, { state: 'done', leaseUntil: null, failureReason: null, reservedCostUsd: 0 }, charge(task))
+      }
+      if (task.state !== 'open' && task.state !== 'claimed' && task.state !== 'running') return reject('illegal_transition')
+      return accept(
+        task,
+        { state: 'done', donorId: event.creditDonorId ?? task.donorId, leaseUntil: null, result: null, failureReason: null, reservedCostUsd: 0 },
+        task.state === 'open' ? { type: 'none' } : release(task),
       )
 
     case 'retry':

@@ -47,6 +47,8 @@ export type ProjectRecord = {
   checks: { setup?: string; run: string } | null
   cause: string | null
   summary: string | null
+  previewUrl: string | null
+  volunteerReviewers: boolean
 }
 
 export type TaskRecord = {
@@ -57,6 +59,14 @@ export type TaskRecord = {
   needsComputer: boolean
   // Set when a routine took the task off the board (e.g. handed back 3 times)
   pausedReason: string | null
+  // Set after a reviewer asked for changes: the open pull request to continue,
+  // and who may revise it first (until revisionUntil).
+  revisionPr: string | null
+  revisionDonor: string | null
+  revisionUntil: number | null
+  revisionFeedback: string | null
+  // The GitHub issue the task came from, if any
+  issueNumber: number | null
   title: string
   goal: string
   instructions: string

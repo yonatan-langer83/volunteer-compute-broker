@@ -16,6 +16,8 @@ export type RepoReader = {
   listFiles(sha: string): Promise<{ path: string; size: number }[]>
   readFile(sha: string, path: string): Promise<string | null>
   tarballUrl(sha: string): Promise<string>
+  // The current head of an open pull request, for revisions.
+  pullRequestHead?(prUrl: string): Promise<{ branch: string; sha: string } | null>
 }
 
 export type CheckRunner = {
@@ -82,7 +84,9 @@ export class Workspaces {
     }
     let workspace = await this.deps.store.getWorkspace(taskId)
     if (!workspace || workspace.donor_id !== donorId) {
-      await this.deps.store.openWorkspace(taskId, donorId, await reader.headSha(), this.now())
+      // A revision continues the open pull request, so it starts from its branch.
+      const head = task.revisionPr && reader.pullRequestHead ? await reader.pullRequestHead(task.revisionPr) : null
+      await this.deps.store.openWorkspace(taskId, donorId, head?.sha ?? await reader.headSha(), this.now())
       workspace = await this.deps.store.getWorkspace(taskId)
     }
     return { task, project, reader, baseSha: workspace!.base_sha }

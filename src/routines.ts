@@ -14,6 +14,11 @@ export const POLICY = {
   trackWindowMs: 30 * 24 * 60 * 60 * 1000,
   probationAfterRejections: 3,
   pauseAfterRejections: 6,
+  // Work labelled "spam" or "invalid" by a maintainer weighs much more.
+  pauseAfterSpam: 2,
+  // After "request changes", the volunteer who made the change may revise it
+  // first, for this long; then any volunteer may continue the pull request.
+  revisionFirstChanceMs: 3 * 24 * 60 * 60 * 1000,
   // Reminders on pull requests nobody has reviewed, in days after hand-in.
   reviewReminderDays: [7, 21],
 } as const
@@ -24,7 +29,14 @@ export const REMOVED_FROM_LIST = 'Removed from the task list by the organization
 
 export type TrackStanding = { level: 'normal' } | { level: 'small-only'; message: string } | { level: 'paused'; message: string }
 
-export function standing(record: { accepted: number; rejected: number }): TrackStanding {
+export function standing(record: { accepted: number; rejected: number; spam?: number }): TrackStanding {
+  const spam = record.spam ?? 0
+  if (spam >= POLICY.pauseAfterSpam) {
+    return { level: 'paused', message: `${spam} of your recent hand-ins were labelled spam by the organization. Volunteering is paused; write to us if you think this is a mistake.` }
+  }
+  if (spam >= 1 && record.accepted <= spam) {
+    return { level: 'small-only', message: 'An organization labelled one of your recent hand-ins as spam, so for now you get one small task per shift. Accepted work lifts this.' }
+  }
   if (record.rejected >= POLICY.pauseAfterRejections && record.accepted === 0) {
     return { level: 'paused', message: `${record.rejected} of your recent hand-ins were turned down and none was accepted. Volunteering is paused for now; write to us and we'll look at it together.` }
   }
