@@ -156,3 +156,53 @@ describe('account page', () => {
     expect(await response.text()).toContain('Please use the forms')
   })
 })
+
+describe('onboarding volunteers', () => {
+  async function signedInWithApplication() {
+    const ctx = await (async () => {
+      const c = await setup({ github: true })
+      const start = await githubStart(c.deps, new URL(`${ORIGIN}/auth/github`))
+      const state = new URL(start.headers.get('location')!).searchParams.get('state')!
+      const url = new URL(`${ORIGIN}/auth/github/callback?code=c&state=${state}`)
+      const done = await githubCallback(c.deps, new Request(url, { headers: { cookie: cookieOf(start, '__Host-vp_state') } }), url)
+      return { ...c, cookie: cookieOf(done, '__Host-vp_session') }
+    })()
+    await ctx.store.insertApplication({
+      id: 'app-1', createdAt: 1, orgName: 'Harbor Food Bank', website: null, contactName: 'Dana', email: 'dana@harbor.org',
+      country: 'Israel', statusKind: 'nonprofit', github: 'help', repoUrl: null, needs: 'Our sign-up page breaks on phones.',
+    })
+    return ctx
+  }
+  const html = async (ctx: Awaited<ReturnType<typeof signedInWithApplication>>) =>
+    (await accountPage(ctx.deps, new Request(`${ORIGIN}/account`, { headers: { cookie: ctx.cookie } }))).text()
+
+  it('lets an approved onboarder take a vetted organization, and shows contact details only then', async () => {
+    const ctx = await signedInWithApplication()
+    expect(await html(ctx)).toContain('Offer to onboard organizations')
+    await accountAction(ctx.deps, post('/account/onboarder', {}, ctx.cookie), 'onboarder')
+    expect(await html(ctx)).toContain("We'll have a short call with you first")
+
+    const account = (await ctx.store.findAccountByGithub('42'))!
+    await ctx.store.setOnboarderStatus(account.id, 'approved')
+    expect(await html(ctx)).toContain('No vetted organization is waiting')
+    await ctx.store.setApplicationState('app-1', 'approved')
+    let page = await html(ctx)
+    expect(page).toContain('Harbor Food Bank')
+    expect(page).not.toContain('dana@harbor.org')
+
+    await accountAction(ctx.deps, post('/account/onboarding/take', { application: 'app-1' }, ctx.cookie), 'onboarding/take')
+    page = await html(ctx)
+    expect(page).toContain('dana@harbor.org')
+    const live = await accountAction(ctx.deps, post('/account/onboarding/update', { application: 'app-1', state: 'live', note: 'Three tasks posted.' }, ctx.cookie), 'onboarding/update')
+    expect(decodeURIComponent(live.headers.get('location')!)).toContain('They are live')
+    const rows = await ctx.store.applicationsForOnboarder(account.id)
+    expect(rows[0]).toMatchObject({ state: 'live', onboarder_note: 'Three tasks posted.' })
+  })
+
+  it('refuses onboarding actions from people who are not approved', async () => {
+    const ctx = await signedInWithApplication()
+    await ctx.store.setApplicationState('app-1', 'approved')
+    const res = await accountAction(ctx.deps, post('/account/onboarding/take', { application: 'app-1' }, ctx.cookie), 'onboarding/take')
+    expect(decodeURIComponent(res.headers.get('location')!)).toContain('for approved onboarding volunteers')
+  })
+})

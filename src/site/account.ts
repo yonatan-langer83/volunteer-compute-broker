@@ -470,6 +470,7 @@ export async function accountPage(deps: AccountDeps, request: Request, notice?: 
     ? `<p><a class="button button-quiet button-small" href="/auth/github?return=%2Faccount">Connect GitHub</a> <span class="muted">to see projects you manage, or to code tasks yourself.</span></p>`
     : ''
   const reviewer = account.github_login ? await reviewerSection(deps, account) : ''
+  const onboarding = await onboardingSection(deps, account)
   return privatePage('Your account', `<div class="wrap page-head narrow">
   <h1>Your account</h1>
   <p class="lead">${esc(who)}</p>
@@ -479,9 +480,60 @@ export async function accountPage(deps: AccountDeps, request: Request, notice?: 
 <div class="wrap section narrow account">
 ${volunteer}
 ${org}
+${onboarding}
 ${reviewer}
 <form method="post" action="/signout"><button class="button button-quiet" type="submit">Sign out</button></form>
 </div>`)
+}
+
+// ---------- onboarding volunteers ----------
+
+const ONBOARDING_STATE: Record<string, string> = {
+  approved: 'waiting for an onboarding volunteer',
+  onboarding: 'you are setting them up',
+  live: 'live',
+  'not-a-fit': 'not a fit',
+}
+
+async function onboardingSection(deps: AccountDeps, account: AccountRow): Promise<string> {
+  const status = await deps.store.onboarderStatus(account.id)
+  if (status === 'approved') {
+    const apps = await deps.store.applicationsForOnboarder(account.id)
+    const mine = apps.filter((a) => a.onboarder_account_id === account.id)
+    const open = apps.filter((a) => !a.onboarder_account_id)
+    const card = (a: (typeof apps)[number], own: boolean) => `<article class="org-project">
+    <h3>${esc(a.org_name)} <span class="status">${esc(ONBOARDING_STATE[a.state] ?? a.state)}</span></h3>
+    <p class="muted">${esc(a.country ?? '')}${a.website ? ` · <a href="${esc(a.website)}" rel="noopener">website</a>` : ''}${a.listing_url ? ` · <a href="${esc(a.listing_url)}" rel="noopener">public-good listing</a>` : ''} · ${a.github === 'yes' ? 'on GitHub' : 'needs help with GitHub'}${a.repo_url ? ` · <a href="${esc(a.repo_url)}" rel="noopener">repository</a>` : ''}</p>
+    <p>${esc(a.needs)}</p>
+    ${own ? `<p><strong>Contact:</strong> ${esc(a.contact_name)}, <a href="mailto:${esc(a.email)}">${esc(a.email)}</a></p>
+    <form method="post" action="/account/onboarding/update" class="form">
+      <input type="hidden" name="application" value="${esc(a.id)}">
+      <label for="note-${esc(a.id)}">Notes for us <span class="optional">(optional)</span></label>
+      <input id="note-${esc(a.id)}" name="note" maxlength="500" value="${esc(a.onboarder_note ?? '')}">
+      <div class="actions">
+        <button class="button button-small" name="state" value="live" type="submit">They're live</button>
+        <button class="button button-quiet button-small" name="state" value="onboarding" type="submit">Save notes</button>
+        <button class="button button-quiet button-small" name="state" value="not-a-fit" type="submit">Not a fit</button>
+        <button class="link-button" name="state" value="approved" type="submit">Hand back</button>
+      </div>
+    </form>` : `<form method="post" action="/account/onboarding/take"><input type="hidden" name="application" value="${esc(a.id)}"><button class="button button-small" type="submit">I'll help them</button></form>`}
+  </article>`
+    return `<section class="panel" aria-labelledby="ob-head">
+  <h2 id="ob-head">Help organizations get started</h2>
+  <p>You're an onboarding volunteer. Follow the <a href="/handbook/onboarding-playbook">onboarding playbook</a>. Contact details appear once you take an organization; use them only for this.</p>
+  ${mine.length ? `<h3>Your organizations</h3>${mine.map((a) => card(a, true)).join('')}` : ''}
+  <h3>Waiting for help</h3>
+  ${open.length ? open.map((a) => card(a, false)).join('') : '<p class="muted">No vetted organization is waiting right now.</p>'}
+</section>`
+  }
+  if (status === 'applied') {
+    return `<section class="panel" aria-labelledby="ob-head"><h2 id="ob-head">Help organizations get started</h2><p>Thanks for offering to onboard organizations. We'll have a short call with you first, then switch this on.</p></section>`
+  }
+  return `<section class="panel" aria-labelledby="ob-head">
+  <h2 id="ob-head">Help organizations get started</h2>
+  <p>Comfortable with GitHub and good with people? Onboarding volunteers set nonprofits up so they don't need IT staff: a call, the repository, the safety settings and the first three tasks. About three hours per organization, spread over a few weeks. <a href="/handbook/onboarding-playbook">See the playbook</a>.</p>
+  <form method="post" action="/account/onboarder"><button class="button button-quiet" type="submit">Offer to onboard organizations</button></form>
+</section>`
 }
 
 // ---------- volunteer reviewers ----------
@@ -547,6 +599,22 @@ export async function accountAction(deps: AccountDeps, request: Request, action:
     if (await deps.store.handleTaken(nickname)) return back(`The name ${nickname} is taken. Please choose another.`)
     const created = await deps.createVolunteer({ nickname, monthly, accountId: account.id })
     return back(created.ok ? `Welcome, ${nickname}. Now connect your AI app.` : created.error)
+  }
+  if (action === 'onboarder') {
+    if (!(await deps.store.onboarderStatus(account.id))) await deps.store.setOnboarderStatus(account.id, 'applied')
+    return back('Thanks for offering to onboard organizations. We will be in touch.')
+  }
+  if (action === 'onboarding/take' || action === 'onboarding/update') {
+    if ((await deps.store.onboarderStatus(account.id)) !== 'approved') return back('This is for approved onboarding volunteers.')
+    const id = String(form.get('application') ?? '')
+    if (action === 'onboarding/take') {
+      return back((await deps.store.takeApplication(id, account.id)) ? 'It is yours. Start with a short call: the playbook has the steps.' : 'Someone else took it already.')
+    }
+    const state = String(form.get('state') ?? '')
+    if (!['onboarding', 'live', 'not-a-fit', 'approved'].includes(state)) return back('Unknown choice.')
+    const note = String(form.get('note') ?? '').trim().slice(0, 500) || null
+    const changed = await deps.store.updateOnboarding(id, account.id, state as 'onboarding' | 'live' | 'not-a-fit' | 'approved', note)
+    return back(!changed ? 'That organization is not yours.' : state === 'live' ? 'Wonderful. They are live.' : state === 'approved' ? 'Handed back for someone else.' : 'Saved.')
   }
   if (action === 'reviewer') {
     if (!account.github_login) return back('Connect GitHub first: reviews happen on GitHub.')

@@ -124,6 +124,9 @@ ${body}
       <h2>Organizations</h2>
       <ul>
         <li><a href="/organizations">How it works for you</a></li>
+        <li><a href="/for-nonprofits">One-page overview</a></li>
+        <li><a href="/handbook/open-source-projects">For open-source maintainers</a></li>
+        <li><a href="/handbook/our-github-app">Our GitHub App</a></li>
         <li><a href="/organizations#apply">Apply</a></li>
         <li><a href="/handbook/what-is-github">What is GitHub?</a></li>
         <li><a href="/handbook/work-packages">Writing work packages</a></li>

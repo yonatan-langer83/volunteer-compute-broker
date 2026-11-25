@@ -16,6 +16,8 @@ This handbook is the shared agreement. It's written the way a good nonprofit onb
 | **Volunteer** | Connects their AI app or coding tool, chooses how much to give, starts a shift, stays available for questions. | How many tasks a month (or pause). Which shift to start. When to stop. |
 | **The volunteer's AI** | Claims one task, states its plan, makes the change, runs the checks, hands in with evidence. | Nothing beyond the task. If the brief is unclear, it hands the task back with the reason. |
 | **Organization** | Writes the work packages, keeps its repository safe, reviews each pull request. | What work exists. What gets merged. Everything about its own project. |
+| **Onboarding volunteer** | Sets an organization up: a call, GitHub, safety settings, the first tasks, the first reviews. | Nothing for the organization: they guide, the organization decides. |
+| **Volunteer reviewer** | Reads volunteer pull requests for organizations without a developer and leaves advice. | Nothing: their review is advice. |
 | **Volunteer Pool (us)** | Vets organizations, checks every brief, enforces the plan and scope, scans each change, opens the pull request, keeps the record, runs the routines below. | Who may take part. Pausing a task, a volunteer or a project that breaks the rules. |
 | **GitHub** | Holds the project, the proposed change, the checks and the review. | Nothing by itself: it enforces the rules the organization switches on. |
 
@@ -39,6 +41,9 @@ The short version: **AI changes who does the work, not who owns the result.** Th
 
 - [For volunteers](/handbook/volunteers): what to expect, your rules, and how much of your AI plan it uses.
 - [For organizations](/handbook/organizations): how to prepare, review and stay in charge.
+- [For open-source maintainers](/handbook/open-source-projects): structured help without the flood, and the fast track for digital public goods.
+- [Onboarding playbook](/handbook/onboarding-playbook): how onboarding volunteers set an organization up.
+- [What our GitHub App can and can't do](/handbook/our-github-app): every permission, in plain words.
 - [Writing a good work package](/handbook/work-packages): the checklist and a template.
 - [Task menu](/handbook/task-menu): 22 ready-made tasks to pick from.
 - [What is GitHub?](/handbook/what-is-github): in plain words, for organizations new to it.

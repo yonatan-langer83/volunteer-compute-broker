@@ -15,7 +15,9 @@ Volunteer Pool brings you volunteers' AI help, and increasingly programmers' own
 
 **You need someone who can look at a change and judge it.** It doesn't have to be a developer for writing tasks. For code, someone who can read it, or a trusted volunteer developer. If you have nobody, tell us when you apply; we help at the start.
 
-## Getting set up (about an hour, with our help)
+## Getting set up (about an hour, done with you)
+
+You don't have to do this alone. Once we've vetted you, an **onboarding volunteer** takes you through every step on a call, following our [onboarding playbook](/handbook/onboarding-playbook).
 
 1. **Apply** on the [organizations page](/organizations). We check you're a nonprofit or a public-good open-source project.
 2. **Get onto GitHub**, if you aren't yet. Read [What is GitHub?](/handbook/what-is-github). Verified nonprofits can get GitHub's paid plan free.

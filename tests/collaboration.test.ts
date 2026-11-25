@@ -192,6 +192,16 @@ describe('tasks from GitHub issues', () => {
   })
 })
 
+describe('credit', () => {
+  it('names volunteers who signed in with GitHub as co-authors', async () => {
+    const ctx = await setup()
+    await ctx.store.insertAccount({ id: 'acc-ada', github_id: '77', github_login: 'ada-codes', email: null }, 1)
+    await ctx.store.linkDonorToAccount(ctx.ada.id, 'acc-ada')
+    await ctx.handIn(ctx.ada.id, fx('shifts.after.py'))
+    expect(ctx.opened[0]!.coAuthor).toBe('ada-codes <77+ada-codes@users.noreply.github.com>')
+  })
+})
+
 describe('volunteer reviewers', () => {
   it('counts only approved reviewers, and only on projects that welcome them', async () => {
     const ctx = await setup()

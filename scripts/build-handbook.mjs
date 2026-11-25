@@ -12,7 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = path.join(root, 'src/site/handbook-content.ts')
 
 // Order of the handbook pages in navigation.
-const ORDER = ['index', 'volunteers', 'organizations', 'work-packages', 'task-menu', 'what-is-github', 'secure-your-repository', 'safety-and-quality', 'what-happens-when', 'github-best-practice', 'open-source']
+const ORDER = ['index', 'volunteers', 'organizations', 'open-source-projects', 'onboarding-playbook', 'our-github-app', 'work-packages', 'task-menu', 'what-is-github', 'secure-your-repository', 'safety-and-quality', 'what-happens-when', 'github-best-practice', 'open-source']
 
 const TEMPLATES = [
   ['volunteer-compute.yaml', 'The task list, at the root of your repository.'],

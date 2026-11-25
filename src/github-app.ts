@@ -376,13 +376,14 @@ export class GitHubApp {
     patch: string
     record?: string
     closesIssue?: number | null
+    coAuthor?: string | null
   }): Promise<string> {
     const { owner, repo } = input
     const token = await this.installationToken(owner, repo)
     const info = await this.call<{ default_branch: string }>(token, 'GET', `/repos/${owner}/${repo}`)
     const base = info.default_branch
     const ref = await this.call<{ object: { sha: string } }>(token, 'GET', `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(base)}`)
-    const message = `[${input.localId}] ${input.title}\n\nVolunteer: ${input.volunteer}, through Volunteer Pool\nVolunteer-Task: ${input.taskId}`
+    const message = `[${input.localId}] ${input.title}\n\nVolunteer: ${input.volunteer}, through Volunteer Pool\nVolunteer-Task: ${input.taskId}${input.coAuthor ? `\n\nCo-authored-by: ${input.coAuthor}` : ''}`
     const sha = await this.commitPatch(token, owner, repo, ref.object.sha, input.patch, message, input.volunteer)
     const branch = `volunteer/${input.localId}-${sha.slice(0, 7)}`
     await this.call(token, 'POST', `/repos/${owner}/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha })
@@ -411,6 +412,7 @@ export class GitHubApp {
     patch: string
     record?: string
     closesIssue?: number | null
+    coAuthor?: string | null
   }): Promise<string> {
     const match = input.prUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/)
     if (!match) throw new Error('not a pull request link')
@@ -418,7 +420,7 @@ export class GitHubApp {
     const token = await this.installationToken(owner, repo)
     const pr = await this.call<{ state: string; head: { ref: string; sha: string }; html_url: string }>(token, 'GET', `/repos/${owner}/${repo}/pulls/${number}`)
     if (pr.state !== 'open') throw new Error('the pull request is no longer open')
-    const message = `[${input.localId}] Revision: ${input.title}\n\nVolunteer: ${input.volunteer}, through Volunteer Pool\nVolunteer-Task: ${input.taskId}`
+    const message = `[${input.localId}] Revision: ${input.title}\n\nVolunteer: ${input.volunteer}, through Volunteer Pool\nVolunteer-Task: ${input.taskId}${input.coAuthor ? `\n\nCo-authored-by: ${input.coAuthor}` : ''}`
     const sha = await this.commitPatch(token, owner, repo, pr.head.sha, input.patch, message, input.volunteer)
     await this.call(token, 'PATCH', `/repos/${owner}/${repo}/git/refs/heads/${pr.head.ref.split('/').map(encodeURIComponent).join('/')}`, { sha, force: false })
     await this.call(token, 'PATCH', `/repos/${owner}/${repo}/pulls/${number}`, { body: fillPreview(this.prBody(input), pr.head.ref, Number(number)) })

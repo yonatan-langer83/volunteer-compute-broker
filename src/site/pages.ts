@@ -402,7 +402,8 @@ export function organizationsPage(config: SiteConfig, error?: string, values: Re
     `<div class="wrap page-head">
   <h1>Get digital work done by volunteers</h1>
   <p class="lead">You describe small, clear tasks. Volunteers and their AI tools do them, one at a time, inside the limits you set. Each result reaches you as a proposed change on GitHub: you review it, and merge it or close it. It's free, and nothing changes in your project without your approval.</p>
-  <p class="actions"><a class="button" href="#apply">Apply for your organization</a><a class="button button-quiet" href="/handbook/organizations">Read the organization handbook</a></p>
+  <p><strong>No IT staff? No problem.</strong> An onboarding volunteer sets everything up with you: a short call, your GitHub, the safety settings and your first tasks.</p>
+  <p class="actions"><a class="button" href="#apply">Apply for your organization</a><a class="button button-quiet" href="/for-nonprofits">The one-page overview</a><a class="button button-quiet" href="/handbook/organizations">Organization handbook</a></p>
 </div>
 
 <section class="wrap section-tight">
@@ -424,7 +425,12 @@ export function organizationsPage(config: SiteConfig, error?: string, values: Re
         <li>Big redesigns that can't be split into small steps.</li>
       </ul>
       <h3>Who can apply</h3>
-      <p>Registered nonprofits and charities in any country, and open-source projects that serve the public good.</p>
+      <ul class="plain">
+        <li><strong>Registered nonprofits and charities</strong> in any country.</li>
+        <li><strong>Open-source digital public goods</strong>: projects on the <a href="https://www.digitalpublicgoods.net/registry" rel="noopener">Digital Public Goods Registry</a> or GitHub's <a href="https://forgoodfirstissue.github.com/" rel="noopener">For Good First Issue</a> are already vetted, so they get a fast track.</li>
+        <li><strong>Other open-source projects that serve the public good</strong>, with active maintainers and an open-source license.</li>
+      </ul>
+      <p><a href="/handbook/open-source-projects">For open-source maintainers</a></p>
     </div>
   </div>
 </section>
@@ -434,7 +440,7 @@ export function organizationsPage(config: SiteConfig, error?: string, values: Re
     <div class="section-head"><h2>How it works for you</h2><p>About an hour to set up, with our help. Then minutes per task to review.</p></div>
     <ol class="steps steps-cols">
       <li><div><h3>Apply</h3><p>Tell us who you are and what you need. About five minutes.</p></div></li>
-      <li><div><h3>Get onto GitHub</h3><p>A free, shared home for your project's files. We help if you're new to it: <a href="/handbook/what-is-github">what GitHub is</a>.</p></div></li>
+      <li><div><h3>Get onto GitHub</h3><p>A free, shared home for your project's files. An onboarding volunteer does it with you: <a href="/handbook/what-is-github">what GitHub is</a>.</p></div></li>
       <li><div><h3>Secure your repository</h3><p>Five settings that make your review an enforced gate. <a href="/handbook/secure-your-repository">The 5-minute guide</a>.</p></div></li>
       <li><div><h3>Write your first tasks</h3><p>Two files: the task list and the rules for volunteers' AIs. We write the first three tasks with you. <a href="/handbook/work-packages">The checklist</a>.</p></div></li>
       <li><div><h3>Review the results</h3><p>Each arrives with the plan, the evidence, the test results, warning signs and a review checklist.</p></div></li>
@@ -460,7 +466,7 @@ export function organizationsPage(config: SiteConfig, error?: string, values: Re
       <h2>What stays yours</h2>
       <ul class="plain">
         <li>Your project, your code and every decision.</li>
-        <li>What gets merged: our GitHub App can only propose changes, never merge or change settings.</li>
+        <li>What gets merged: our GitHub App can only propose changes, never merge or change settings. <a href="/handbook/our-github-app">Exactly what it can do</a>.</li>
         <li>The right to pause, change or leave at any time.</li>
       </ul>
       <p><a href="/handbook/safety-and-quality">Safety and quality, in detail</a></p>
@@ -487,7 +493,8 @@ export function organizationsPage(config: SiteConfig, error?: string, values: Re
       <fieldset>
         <legend>What kind of organization are you?</legend>
         ${radio('status_kind', 'nonprofit', 'Registered nonprofit or charity')}
-        ${radio('status_kind', 'public-good', 'Open-source or public-good project')}
+        ${radio('status_kind', 'digital-public-good', 'Open-source project listed as a Digital Public Good or on For Good First Issue (fast track)')}
+        ${radio('status_kind', 'public-good', 'Other open-source project that serves the public good')}
         ${radio('status_kind', 'other', 'Something else (tell us below)')}
       </fieldset>
       <fieldset>
@@ -495,6 +502,9 @@ export function organizationsPage(config: SiteConfig, error?: string, values: Re
         ${radio('github', 'yes', 'Yes, we have a repository')}
         ${radio('github', 'help', "No, we'd like help getting started")}
       </fieldset>
+      <label for="listing">Public-good listing <span class="optional">(for the fast track)</span></label>
+      <input id="listing" name="listing_url" type="url" maxlength="200" placeholder="https://www.digitalpublicgoods.net/r/..." value="${esc(values.listing_url)}">
+      <p class="help">Your page on the <a href="https://www.digitalpublicgoods.net/registry" rel="noopener">Digital Public Goods Registry</a> or <a href="https://forgoodfirstissue.github.com/" rel="noopener">For Good First Issue</a>. Projects already vetted there skip most of our checks.</p>
       <label for="repo">Repository link <span class="optional">(if you have one)</span></label>
       <input id="repo" name="repo_url" type="url" maxlength="200" placeholder="https://github.com/..." value="${esc(values.repo_url)}">
       <label for="needs">What do you need help with?</label>
@@ -513,6 +523,68 @@ export function organizationsPage(config: SiteConfig, error?: string, values: Re
   ${faqHtml([{ items: faq }])}
 </section>
 ${faqJsonLd(faq)}`,
+  )
+}
+
+// ---------- pitch for nonprofits (prints as a one-pager) ----------
+
+export function nonprofitsPage(): Response {
+  return page(
+    {
+      title: `Free digital help for your nonprofit | ${SITE.name}`,
+      description: 'Volunteers fix your website, write your guides and translate your pages, set up for you by an onboarding volunteer. You approve every change. Free.',
+      path: '/for-nonprofits',
+      section: 'organizations',
+    },
+    `<article class="wrap onepager">
+  <header class="onepager-head">
+    <p class="onepager-brand"><img src="/favicon.svg" alt="" width="40" height="40"> ${SITE.name}</p>
+    <h1>Free digital help for your nonprofit. We set it up for you.</h1>
+    <p class="lead">Your website, your guides, your forms: small digital jobs you never have time for. Volunteers do them, with their skills or their AI. You see every change and say yes or no. No IT staff needed.</p>
+  </header>
+  <div class="two">
+    <section>
+      <h2>What volunteers can do for you</h2>
+      <ul class="checklist">
+        <li class="ok">Make your website work on phones</li>
+        <li class="ok">Fix broken links, forms and pages</li>
+        <li class="ok">Write guides for new volunteers or staff</li>
+        <li class="ok">Translate pages into your community's languages</li>
+        <li class="ok">Make your site accessible</li>
+        <li class="ok">Tidy spreadsheets with small tools</li>
+      </ul>
+    </section>
+    <section>
+      <h2>How it works</h2>
+      <ol class="plain">
+        <li><strong>A volunteer calls you.</strong> Thirty minutes to find two or three things you'd like changed.</li>
+        <li><strong>They set everything up with you</strong>, in your name, in about an hour.</li>
+        <li><strong>Volunteers do the work</strong>, one small task at a time.</li>
+        <li><strong>You approve each change</strong>, or ask for a fix. About 15 minutes a week.</li>
+      </ol>
+    </section>
+  </div>
+  <section class="onepager-safe">
+    <h2>Is it safe?</h2>
+    <div class="three">
+      <p><strong>Nothing changes without you.</strong> Every change is a proposal you can see before you accept it.</p>
+      <p><strong>No passwords, no private data.</strong> Volunteers never get access to your accounts, systems or people's data.</p>
+      <p><strong>Checked, then checked again.</strong> We vet organizations, check every task and every result, and keep a public record.</p>
+    </div>
+  </section>
+  <div class="two">
+    <section>
+      <h2>What it costs</h2>
+      <p>Nothing. Volunteers give their time and their own AI tools. Your part: a short call, and about 15 minutes a week to look at changes.</p>
+    </section>
+    <section>
+      <h2>Who can join</h2>
+      <p>Registered nonprofits and charities in any country, and open-source projects that serve the public good, including <a href="/handbook/open-source-projects">digital public goods</a>.</p>
+    </section>
+  </div>
+  <p class="actions onepager-cta"><a class="button" href="/organizations#apply">Apply in five minutes</a> <span class="print-only">Apply at volunteer.apishelf.dev/organizations</span> <button class="button button-quiet no-print" type="button" data-print>Print this page</button></p>
+  <p class="muted onepager-foot">AI changes who does the work, not who owns the result. You stay in charge. <a href="/handbook/safety-and-quality">How we keep it safe</a></p>
+</article>`,
   )
 }
 
@@ -812,7 +884,7 @@ export function privacyPage(config: SiteConfig): Response {
 <li><strong>Your account:</strong> your GitHub user name and ID, or your email address if you sign in by email, and when you last signed in. Used only to sign you in.</li>
 <li><strong>Volunteers:</strong> the public name you choose (public by design), your monthly limit, the AI apps you connected, and the record of your tasks. We store only a scrambled form of your keys, never the keys themselves.</li>
 <li><strong>Volunteer work:</strong> your AI's plan, summary, evidence and change. Kept private until the organization reviews it in its own GitHub repository; merged work is public.</li>
-<li><strong>Organizations that apply:</strong> organization name, website, your name, email, country and what you need. Used only to review your application and reply.</li>
+<li><strong>Organizations that apply:</strong> organization name, website, your name, email, country and what you need. Used only to review your application and reply. Once we've vetted you, the onboarding volunteer who takes your organization sees your contact details, to set you up, and must use them only for that.</li>
 <li><strong>The waiting list:</strong> your email. Used once, to tell you giving money opened.</li>
 <li><strong>Abuse protection:</strong> forms use Cloudflare Turnstile, and we keep a scrambled form of your network address for one day to limit repeated attempts.</li>
 </ul>

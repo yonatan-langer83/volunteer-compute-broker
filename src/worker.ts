@@ -99,7 +99,7 @@ function accountDeps(env: Env, store: SqliteStore): AccountDeps {
   }
 }
 
-const ACCOUNT_ACTIONS = new Set(['volunteer', 'link', 'monthly', 'keys', 'keys/revoke', 'apps/disconnect', 'reviewer'])
+const ACCOUNT_ACTIONS = new Set(['volunteer', 'link', 'monthly', 'keys', 'keys/revoke', 'apps/disconnect', 'reviewer', 'onboarder', 'onboarding/take', 'onboarding/update'])
 
 async function accountRoutes(request: Request, env: Env, url: URL): Promise<Response | null> {
   const path = url.pathname

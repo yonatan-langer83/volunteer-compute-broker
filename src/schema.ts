@@ -152,7 +152,10 @@ CREATE TABLE IF NOT EXISTS applications (
   github TEXT NOT NULL,
   repo_url TEXT,
   needs TEXT NOT NULL,
-  state TEXT NOT NULL DEFAULT 'new'
+  state TEXT NOT NULL DEFAULT 'new',
+  onboarder_account_id TEXT,
+  onboarder_note TEXT,
+  listing_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS waitlist (
@@ -209,7 +212,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   email TEXT UNIQUE,
   created_at INTEGER NOT NULL,
   last_login_at INTEGER NOT NULL,
-  reviewer_status TEXT
+  reviewer_status TEXT,
+  onboarder_status TEXT
 );
 
 CREATE TABLE IF NOT EXISTS account_sessions (

@@ -7,7 +7,7 @@ import type { SqliteStore } from '../sqlite-store.js'
 import { SITE, slugify } from './layout.js'
 import { HANDBOOK } from './handbook-content.js'
 import {
-  aboutPage, accessibilityPage, faqPage, handbookPage, homePage, howPage, notFoundPage, organizationsPage, privacyPage,
+  aboutPage, accessibilityPage, faqPage, handbookPage, homePage, howPage, nonprofitsPage, notFoundPage, organizationsPage, privacyPage,
   projectPage, projectsPage, templatesPage, termsPage, thanksPage, volunteerImpactPage, volunteerPage, volunteersPage, type SiteConfig,
 } from './pages.js'
 
@@ -19,7 +19,7 @@ export type SiteDeps = {
   now?: () => number
 }
 
-const PAGES = ['/', '/volunteer', '/organizations', '/how-it-works', '/projects', '/volunteers', '/handbook', ...HANDBOOK.filter((p) => p.slug).map((p) => `/handbook/${p.slug}`), '/handbook/templates', '/about', '/faq', '/privacy', '/terms', '/accessibility']
+const PAGES = ['/', '/volunteer', '/organizations', '/for-nonprofits', '/how-it-works', '/projects', '/volunteers', '/handbook', ...HANDBOOK.filter((p) => p.slug).map((p) => `/handbook/${p.slug}`), '/handbook/templates', '/about', '/faq', '/privacy', '/terms', '/accessibility']
 
 // Old guide addresses point to the handbook.
 const MOVED: Record<string, string> = { '/guides': '/handbook', '/guides/what-is-github': '/handbook/what-is-github', '/guides/work-packages': '/handbook/work-packages', '/guides/secure-your-repository': '/handbook/secure-your-repository', '/guides/safety-and-quality': '/handbook/safety-and-quality' }
@@ -38,6 +38,7 @@ export async function handleSiteGet(deps: SiteDeps, url: URL): Promise<Response 
     case '/volunteer': return volunteerPage(config)
     case '/organizations': return organizationsPage(config)
     case '/how-it-works': return howPage()
+    case '/for-nonprofits': return nonprofitsPage()
     case '/about': return aboutPage(config)
     case '/faq': return faqPage()
     case '/privacy': return privacyPage(config)
@@ -113,7 +114,7 @@ async function guard(deps: SiteDeps, request: Request, form: FormData, bucket: s
 export async function handleApply(deps: SiteDeps, request: Request): Promise<Response> {
   const form = await request.formData()
   const values: Record<string, string> = {}
-  for (const name of ['org_name', 'org_site', 'contact_name', 'email', 'country', 'status_kind', 'github', 'repo_url']) values[name] = field(form, name)
+  for (const name of ['org_name', 'org_site', 'contact_name', 'email', 'country', 'status_kind', 'github', 'repo_url', 'listing_url']) values[name] = field(form, name)
   values.needs = field(form, 'needs', 4000)
   const blocked = await guard(deps, request, form, 'apply', 5)
   if (blocked) return organizationsPage(deps.config, blocked, values)
@@ -121,7 +122,9 @@ export async function handleApply(deps: SiteDeps, request: Request): Promise<Res
   if (!values.org_name) problems.push('the organization name')
   if (!values.contact_name) problems.push('your name')
   if (!isEmail(values.email!)) problems.push('a valid email')
-  if (!['nonprofit', 'public-good', 'other'].includes(values.status_kind!)) problems.push('what kind of organization you are')
+  if (!['nonprofit', 'digital-public-good', 'public-good', 'other'].includes(values.status_kind!)) problems.push('what kind of organization you are')
+  if (values.listing_url && !isUrl(values.listing_url)) problems.push('a listing link starting with https://')
+  if (values.status_kind === 'digital-public-good' && !values.listing_url) problems.push('the link to your Digital Public Goods Registry or For Good First Issue listing')
   if (!['yes', 'help'].includes(values.github!)) problems.push('whether you are on GitHub')
   if (!values.needs) problems.push('what you need help with')
   if (values.org_site && !isUrl(values.org_site)) problems.push('a website link starting with https://')
@@ -140,6 +143,7 @@ export async function handleApply(deps: SiteDeps, request: Request): Promise<Res
     github: values.github!,
     repoUrl: values.repo_url || null,
     needs: values.needs!,
+    listingUrl: values.listing_url || null,
   })
   return thanksPage('Thanks, we have your application.', `We'll reply to ${values.email} within a week.`)
 }

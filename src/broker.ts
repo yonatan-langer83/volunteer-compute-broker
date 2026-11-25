@@ -54,6 +54,7 @@ export type PullRequestOpener = {
     patch: string
     record?: string
     closesIssue?: number | null
+    coAuthor?: string | null
   }): Promise<string | null>
   // Adds a revision to an open volunteer pull request.
   revise?(input: {
@@ -67,6 +68,7 @@ export type PullRequestOpener = {
     patch: string
     record?: string
     closesIssue?: number | null
+    coAuthor?: string | null
   }): Promise<string | null>
 }
 
@@ -873,7 +875,10 @@ export class Broker {
         revision: !!task.revisionPr,
         preview: previewFor(project.previewUrl, task),
       })
-      const pr = { project, taskId, localId: task.localId, title: task.title, volunteer, summary, patch, record, closesIssue: task.issueNumber }
+      // Volunteers who signed in with GitHub are credited on the commit, so it shows on their profile.
+      const github = await this.store.githubForDonor(donorId)
+      const coAuthor = github ? `${github.login} <${github.id}+${github.login}@users.noreply.github.com>` : null
+      const pr = { project, taskId, localId: task.localId, title: task.title, volunteer, summary, patch, record, closesIssue: task.issueNumber, coAuthor }
       const url = task.revisionPr && this.pullRequests!.revise
         ? await this.pullRequests!.revise({ ...pr, prUrl: task.revisionPr })
         : await this.pullRequests!.open(pr)

@@ -163,6 +163,11 @@ const DONOR_COLUMNS = `
 
 const PROJECT_COLUMNS = `id, name, github, org_url, nonprofit, repo_path, agents_md, registered_at, checks_json, cause, summary, preview_url, volunteer_reviewers`
 
+export type OnboardingApplication = {
+  id: string; created_at: number; org_name: string; website: string | null; contact_name: string; email: string; country: string | null
+  status_kind: string; github: string; repo_url: string | null; needs: string; state: string; onboarder_account_id: string | null; onboarder_note: string | null; listing_url: string | null
+}
+
 export type AccountRow = { id: string; github_id: string | null; github_login: string | null; email: string | null }
 
 export class SqliteStore {
@@ -835,13 +840,13 @@ export class SqliteStore {
 
   async insertApplication(row: {
     id: string; createdAt: number; orgName: string; website: string | null; contactName: string; email: string
-    country: string | null; statusKind: string; github: string; repoUrl: string | null; needs: string
+    country: string | null; statusKind: string; github: string; repoUrl: string | null; needs: string; listingUrl?: string | null
   }) {
     await this.ready
     await this.sql.run(
-      `INSERT INTO applications (id, created_at, org_name, website, contact_name, email, country, status_kind, github, repo_url, needs, state)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')`,
-      [row.id, row.createdAt, row.orgName, row.website, row.contactName, row.email, row.country, row.statusKind, row.github, row.repoUrl, row.needs],
+      `INSERT INTO applications (id, created_at, org_name, website, contact_name, email, country, status_kind, github, repo_url, needs, state, listing_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)`,
+      [row.id, row.createdAt, row.orgName, row.website, row.contactName, row.email, row.country, row.statusKind, row.github, row.repoUrl, row.needs, row.listingUrl ?? null],
     )
   }
 
@@ -1165,6 +1170,12 @@ export class SqliteStore {
     return await this.sql.run(`UPDATE donors SET account_id = ? WHERE id = ? AND account_id IS NULL`, [accountId, donorId])
   }
 
+  async githubForDonor(donorId: string) {
+    await this.ready
+    const row = await this.sql.get(`SELECT a.github_id, a.github_login FROM donors d JOIN accounts a ON a.id = d.account_id WHERE d.id = ?`, [donorId]) as { github_id: string | null; github_login: string | null } | undefined
+    return row?.github_id && row.github_login ? { id: row.github_id, login: row.github_login } : null
+  }
+
   async isApprovedReviewer(githubLogin: string) {
     await this.ready
     return !!(await this.sql.get(`SELECT 1 AS ok FROM accounts WHERE lower(github_login) = lower(?) AND reviewer_status = 'approved'`, [githubLogin]))
@@ -1178,6 +1189,44 @@ export class SqliteStore {
     await this.ready
     const row = await this.sql.get(`SELECT reviewer_status FROM accounts WHERE id = ?`, [accountId]) as { reviewer_status: string | null } | undefined
     return row?.reviewer_status ?? null
+  }
+
+  // Our vetting decision on an application: 'approved' makes it available to onboarding volunteers.
+  async setApplicationState(id: string, state: 'new' | 'approved' | 'declined') {
+    return await this.sql.run(`UPDATE applications SET state = ? WHERE id = ?`, [state, id])
+  }
+
+  async onboarderStatus(accountId: string) {
+    await this.ready
+    const row = await this.sql.get(`SELECT onboarder_status FROM accounts WHERE id = ?`, [accountId]) as { onboarder_status: string | null } | undefined
+    return row?.onboarder_status ?? null
+  }
+
+  async setOnboarderStatus(accountId: string, status: 'applied' | 'approved' | null) {
+    await this.sql.run(`UPDATE accounts SET onboarder_status = ? WHERE id = ?`, [status, accountId])
+  }
+
+  // Vetted applications nobody has taken yet, and the ones this onboarder took.
+  async applicationsForOnboarder(accountId: string) {
+    await this.ready
+    return await this.sql.all(
+      `SELECT id, created_at, org_name, website, contact_name, email, country, status_kind, github, repo_url, needs, state, onboarder_account_id, onboarder_note, listing_url
+       FROM applications WHERE (state = 'approved' AND onboarder_account_id IS NULL) OR onboarder_account_id = ? ORDER BY created_at LIMIT 50`,
+      [accountId],
+    ) as OnboardingApplication[]
+  }
+
+  async takeApplication(id: string, accountId: string) {
+    return await this.sql.run(`UPDATE applications SET onboarder_account_id = ?, state = 'onboarding' WHERE id = ? AND state = 'approved' AND onboarder_account_id IS NULL`, [accountId, id])
+  }
+
+  async updateOnboarding(id: string, accountId: string, state: 'onboarding' | 'live' | 'not-a-fit' | 'approved', note: string | null) {
+    const release = state === 'approved'
+    return await this.sql.run(
+      `UPDATE applications SET state = ?, onboarder_note = COALESCE(?, onboarder_note), onboarder_account_id = CASE WHEN ? THEN NULL ELSE onboarder_account_id END
+       WHERE id = ? AND onboarder_account_id = ?`,
+      [state, note, release ? 1 : 0, id, accountId],
+    )
   }
 
   async getSigninApp() {

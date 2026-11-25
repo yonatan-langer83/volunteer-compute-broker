@@ -19,3 +19,6 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('click', (event) => {
   document.querySelectorAll('details.nav-mobile[open]').forEach((d) => { if (!d.contains(event.target)) d.removeAttribute('open') })
 })
+
+// Print buttons on printable pages.
+document.querySelectorAll('[data-print]').forEach((b) => b.addEventListener('click', () => window.print()))

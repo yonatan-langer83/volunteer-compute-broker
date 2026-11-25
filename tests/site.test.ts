@@ -44,7 +44,7 @@ describe('public website', () => {
   it('serves every page with a unique title, a canonical link and security headers', async () => {
     const { deps } = await setup()
     const titles = new Set<string>()
-    for (const path of ['/', '/volunteer', '/organizations', '/how-it-works', '/projects', '/projects/harbor-pantry', '/volunteers', '/about', '/faq', '/privacy', '/terms', '/accessibility']) {
+    for (const path of ['/', '/volunteer', '/organizations', '/for-nonprofits', '/how-it-works', '/projects', '/projects/harbor-pantry', '/volunteers', '/about', '/faq', '/privacy', '/terms', '/accessibility']) {
       const { status, html, response } = await get(deps, path)
       expect(status, path).toBe(200)
       const title = html.match(/<title>([^<]+)<\/title>/)?.[1]
@@ -54,7 +54,7 @@ describe('public website', () => {
       expect(html.match(/<h1[ >]/g)?.length, path).toBe(1)
       expect(response!.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
     }
-    expect(titles.size).toBe(12)
+    expect(titles.size).toBe(13)
   })
 
   it('lists the live tasks on the home page and the project page', async () => {
@@ -91,7 +91,7 @@ describe('directory and handbook', () => {
 
   it('serves every handbook page, the templates, and redirects old guide addresses', async () => {
     const { deps } = await setup()
-    for (const path of ['/handbook', '/handbook/volunteers', '/handbook/organizations', '/handbook/work-packages', '/handbook/what-is-github', '/handbook/task-menu',
+    for (const path of ['/handbook', '/handbook/volunteers', '/handbook/organizations', '/handbook/open-source-projects', '/handbook/onboarding-playbook', '/handbook/our-github-app', '/handbook/work-packages', '/handbook/what-is-github', '/handbook/task-menu',
       '/handbook/secure-your-repository', '/handbook/safety-and-quality', '/handbook/what-happens-when', '/handbook/github-best-practice', '/handbook/open-source', '/handbook/templates']) {
       const { status, html } = await get(deps, path)
       expect(status, path).toBe(200)
@@ -123,6 +123,15 @@ describe('organization applications and the waiting list', () => {
     expect(ok).toContain('we have your application')
     const rows = await store.listApplications() as { org_name: string; github: string }[]
     expect(rows.map((r) => [r.org_name, r.github])).toEqual([['Food Bank', 'help']])
+  })
+
+  it('asks public-good projects on the fast track for their listing', async () => {
+    const { deps, store } = await setup()
+    const base = { org_name: 'OpenCRM', contact_name: 'Ana', email: 'ana@opencrm.org', github: 'yes', needs: 'Translations.', agree: 'yes', status_kind: 'digital-public-good' }
+    expect(await (await handleApply(deps, post('/organizations/apply', base))).text()).toContain('Digital Public Goods Registry or For Good First Issue listing')
+    await handleApply(deps, post('/organizations/apply', { ...base, listing_url: 'https://www.digitalpublicgoods.net/r/opencrm' }, '198.51.100.20'))
+    const rows = await store.listApplications() as { status_kind: string }[]
+    expect(rows.map((r) => r.status_kind)).toEqual(['digital-public-good'])
   })
 
   it('adds an email to the waiting list once', async () => {
