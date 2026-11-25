@@ -202,7 +202,8 @@ export class GitHubApp {
     try {
       const result = await this.call<{ permission?: string; role_name?: string }>(token, 'GET', `/repos/${owner}/${repo}/collaborators/${encodeURIComponent(login)}/permission`)
       return result.role_name ?? result.permission ?? 'none'
-    } catch {
+    } catch (error) {
+      console.error('collaboratorPermission failed', login, String(error))
       return 'none'
     }
   }
@@ -224,15 +225,22 @@ export class GitHubApp {
       token, 'GET', `/repos/${owner}/${repo}/issues?state=open&per_page=50&labels=${encodeURIComponent(label)}`,
     )
     const ready: { number: number; title: string; body: string | null; url: string }[] = []
+    console.log('issues: labelled', label, issues.map((i) => i.number))
     for (const issue of issues) {
       if (issue.pull_request) continue
       const events = await this.call<{ event: string; label?: { name: string }; actor?: { login: string } }[]>(
         token, 'GET', `/repos/${owner}/${repo}/issues/${issue.number}/events?per_page=100`,
       )
       const labelled = events.filter((e) => e.event === 'labeled' && e.label?.name === label).pop()
-      if (!labelled?.actor) continue
+      if (!labelled?.actor) {
+        console.log('issues: no label event', issue.number, events.length)
+        continue
+      }
       const permission = await this.collaboratorPermission(owner, repo, labelled.actor.login)
-      if (!['admin', 'maintain', 'write'].includes(permission)) continue
+      if (!['admin', 'maintain', 'write'].includes(permission)) {
+        console.log('issues: labeller lacks write', issue.number, labelled.actor.login, permission)
+        continue
+      }
       ready.push({ number: issue.number, title: issue.title, body: issue.body, url: issue.html_url })
     }
     return ready
