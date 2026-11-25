@@ -81,7 +81,7 @@ const CHECKS: { kind: string; pattern: RegExp; detail: string; blocking?: boolea
   { kind: 'hidden-text', pattern: /[‪-‮⁦-⁩]/, detail: 'invisible text-direction characters (can make code read differently than it runs)', blocking: true },
   { kind: 'hidden-text', pattern: /[​-‍⁠﻿]/, detail: 'invisible zero-width characters' },
   { kind: 'secret', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, detail: 'a private key', blocking: true },
-  { kind: 'secret', pattern: /\b(AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,}|sk-[A-Za-z0-9_-]{32,}|xox[baprs]-[A-Za-z0-9-]{10,}|vbk_[A-Za-z0-9_-]{30,})\b/, detail: 'something that looks like a password or access key', blocking: true },
+  { kind: 'secret', pattern: /\b(AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_.-]{36,}|github_pat_[A-Za-z0-9_]{40,}|sk-[A-Za-z0-9_-]{32,}|xox[baprs]-[A-Za-z0-9-]{10,}|vbk_[A-Za-z0-9_-]{30,})\b/, detail: 'something that looks like a password or access key', blocking: true },
   { kind: 'runs-code', pattern: /\b(eval|exec)\s*\(|new\s+Function\s*\(|child_process|subprocess\.|os\.system\s*\(|Runtime\.getRuntime/, detail: 'code that runs other code or commands' },
   { kind: 'download-and-run', pattern: /(curl|wget)\b[^\n|]*\|\s*(ba|z)?sh\b/, detail: 'downloads something and runs it' },
   { kind: 'network', pattern: /\bfetch\s*\(|XMLHttpRequest|\brequests\.(get|post|put)|urllib|http\.client|net\.connect|socket\.|WebSocket\s*\(/, detail: 'a new network call' },

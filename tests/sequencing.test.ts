@@ -48,3 +48,12 @@ describe('controls switched on', () => {
     expect(prLabels('code')).toContain('agent-code')
   })
 })
+
+import { redact } from '../src/redact.js'
+describe('GitHub token formats', () => {
+  it('hides old and long new-format tokens in logs', () => {
+    const long = 'ghs_' + 'aB3_x.Y-'.repeat(64)
+    expect(redact(`token ${long} end`)).toBe('token [REDACTED] end')
+    expect(redact('ghp_' + 'a'.repeat(36))).toBe('[REDACTED]')
+  })
+})

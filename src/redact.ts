@@ -10,6 +10,8 @@ export function redact(text: string, secrets: readonly string[] = []): string {
   out = out.replace(/AIza[0-9A-Za-z_-]{16,}/g, '[REDACTED]')
   out = out.replace(/ya29\.[0-9A-Za-z\-_.]+/g, '[REDACTED]')
   out = out.replace(/([?&]key=)[^&\s]+/gi, '$1[REDACTED]')
+  // GitHub tokens, including the longer installation-token format.
+  out = out.replace(/\b(gh[pousr]_[A-Za-z0-9_.-]{20,}|github_pat_[A-Za-z0-9_]{20,})/g, '[REDACTED]')
   out = out.replace(/vbk_[A-Za-z0-9_-]{16,}/g, '[REDACTED]')
   return out
 }
