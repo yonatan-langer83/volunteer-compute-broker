@@ -136,6 +136,7 @@ ${body}
         <li><a href="/handbook">Overview</a></li>
         <li><a href="/handbook/safety-and-quality">Safety and quality</a></li>
         <li><a href="/handbook/what-happens-when">What happens when…</a></li>
+        <li><a href="/handbook/github-best-practice">GitHub best practice</a></li>
         <li><a href="/handbook/secure-your-repository">Secure your repository</a></li>
         <li><a href="/handbook/templates">Templates</a></li>
       </ul>

@@ -92,7 +92,7 @@ describe('directory and handbook', () => {
   it('serves every handbook page, the templates, and redirects old guide addresses', async () => {
     const { deps } = await setup()
     for (const path of ['/handbook', '/handbook/volunteers', '/handbook/organizations', '/handbook/work-packages', '/handbook/what-is-github',
-      '/handbook/secure-your-repository', '/handbook/safety-and-quality', '/handbook/what-happens-when', '/handbook/open-source', '/handbook/templates']) {
+      '/handbook/secure-your-repository', '/handbook/safety-and-quality', '/handbook/what-happens-when', '/handbook/github-best-practice', '/handbook/open-source', '/handbook/templates']) {
       const { status, html } = await get(deps, path)
       expect(status, path).toBe(200)
       expect(html.match(/<h1[ >]/g)?.length, path).toBe(1)

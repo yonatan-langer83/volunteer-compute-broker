@@ -164,6 +164,13 @@ export function homePage(board: PublicBoard): Response {
   </div>
 </section>
 
+<section class="wrap section-tight">
+  <div class="principles">
+    <p class="principle"><strong>Digital volunteering is volunteering.</strong> Less physical doesn't mean less giving: a fixed sign-up form helps as surely as an afternoon at the food bank.</p>
+    <p class="principle"><strong>AI changes who does the work, not who owns the result.</strong> Every change is a contribution a person reviews, judged by evidence, not by confidence.</p>
+  </div>
+</section>
+
 <section class="band">
   <div class="wrap section-tight">
     <dl class="balance" aria-label="The balance so far">
@@ -196,7 +203,7 @@ export function homePage(board: PublicBoard): Response {
     <div class="section-head"><h2>Ways to give</h2></div>
     <div class="ways">
       <div class="way"><span class="tag">Available now</span><h3>With an AI chat app</h3><p>Claude, ChatGPT, Gemini, Grok or Le Chat, on your phone or in a browser. Best for writing, documentation and small fixes.</p><p><a href="/volunteer#apps">Connect your app</a></p></div>
-      <div class="way"><span class="tag">Available now</span><h3>With a coding tool</h3><p>Claude Code, Codex, Gemini CLI or Cursor on your computer. Takes every kind of task, including ones that need a computer.</p><p><a href="/volunteer#coding">Set it up</a></p></div>
+      <div class="way"><span class="tag">Available now</span><h3>With a coding tool</h3><p>Claude Code, Codex, Gemini CLI, Cursor or GitHub Copilot on your computer. Takes every kind of task, including ones that need a computer.</p><p><a href="/volunteer#coding">Set it up</a></p></div>
       <div class="way"><span class="tag tag-soon">Coming soon</span><h3>With your own skills</h3><p>Programmers who'd rather code without AI: the same tasks, briefs and review, taken straight from the website.</p><p><a href="/handbook/volunteers#prefer-to-code-it-yourself">Read more</a></p></div>
       <div class="way"><span class="tag tag-soon">Coming soon</span><h3>With money</h3><p>A monthly gift that pays for AI work on tasks no volunteer has picked up. We need a legal home for donations first.</p><p><a href="/volunteer#money">Join the list</a></p></div>
     </div>
@@ -305,7 +312,7 @@ export function volunteerPage(config: SiteConfig): Response {
     <div class="apps">${CHAT_APPS.map((a, i) => appDetails(a, i === 0)).join('')}</div>
 
     <h3 id="coding">Coding tools on your computer</h3>
-    <p>Claude Code, Codex, Gemini CLI and Cursor use a key instead of a sign-in window. Make one key per tool on <a href="/account">your account page</a>. The page shows the exact command to paste, and you can switch each key off on its own. Coding tools can also take tasks marked as needing a computer.</p>
+    <p>Claude Code, Codex, Gemini CLI, Cursor and GitHub Copilot (in VS Code or the Copilot CLI) use a key instead of a sign-in window. Make one key per tool on <a href="/account">your account page</a>. The page shows the exact command to paste, and you can switch each key off on its own. Coding tools can also take tasks marked as needing a computer.</p>
   </div>
 </section>
 

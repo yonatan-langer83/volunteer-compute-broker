@@ -5,7 +5,7 @@ description: How Volunteer Pool keeps work good and everyone safe, why organizat
 
 # Safety and quality
 
-Our rule of thumb: **judge the work by evidence, not by how confident anyone sounds.** That goes for AI and people alike. No single check is enough, so work passes through several layers, and a person at the organization always has the last word.
+Our rule of thumb: **judge the work by evidence, not by how confident anyone sounds.** That goes for AI and people alike. We treat AI work as a contribution: not rejected because an AI wrote it, not accepted because automation produced it. A good contribution is understandable, bounded, reviewable, compliant with your rules, and traceable afterwards ([our GitHub best practice](/handbook/github-best-practice)). No single check is enough, so work passes through several layers, and a person at the organization always has the last word.
 
 ## The layers every change passes
 

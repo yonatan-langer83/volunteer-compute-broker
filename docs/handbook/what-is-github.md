@@ -7,7 +7,9 @@ description: GitHub in plain words for nonprofits, and how volunteers' AI work i
 
 **GitHub is a shared home for your digital projects.** Your website, your app, your documents and guides all live there as files, with their full history. Other people can propose improvements, and nothing changes until someone you trust approves it. Once approved, the change can go straight into use, for example onto your live website.
 
-Millions of projects use it, including most open-source software. It's free for public projects, and verified nonprofits can get the paid plan free through [GitHub for Nonprofits](https://nonprofits.github.com).
+Millions of projects use it, including most open-source software. It's free for public projects, and verified nonprofits can get the GitHub Team plan free through [GitHub for Nonprofits](https://docs.github.com/en/nonprofit/nonprofit-teams-plan/getting-started-with-the-github-team-plan-for-nonprofits).
+
+**GitHub is already a place where strangers volunteer**: open source has worked this way for decades. What it doesn't give a nonprofit on its own is what volunteering needs: a handbook with clear rules, work broken into small pieces, coordination so people don't collide, a way for people without GitHub to help, and help getting started. That's what Volunteer Pool adds.
 
 ## The words you'll meet
 
@@ -57,11 +59,15 @@ The volunteer's AI never gets access to your GitHub. It works through our server
 
 A real example: a volunteer's AI fixes a bug on your sign-up page. GitHub shows you the eight changed lines. Your tests run and turn green. Your web person, the code owner for `site/`, is asked to review. Merging is blocked until they approve. They approve and merge, and your website updates.
 
-## Getting started
+## Getting started, step by step
 
-1. Create a free account at [github.com](https://github.com) for a person, then a free **organization** for your nonprofit. Use a shared admin email, not one person's.
-2. Turn on two-factor sign-in for everyone with access.
-3. Create a repository for the project, or we help you move an existing website or document collection in.
-4. [Secure it](/handbook/secure-your-repository), add the [two files](/handbook/templates), and install our app.
+1. **Create a personal account** at [github.com](https://github.com) for the person who'll look after it ([getting started with your account](https://docs.github.com/en/get-started/onboarding/getting-started-with-your-github-account)).
+2. **Create an organization** for your nonprofit, free, with a shared admin email rather than one person's. Add at least two owners, so you're never locked out.
+3. **Apply for GitHub for Nonprofits** to get the Team plan free ([quickstart](https://docs.github.com/en/nonprofit/quickstart)). It unlocks protected branches and rulesets for private repositories. Allow up to a week.
+4. **Turn on two-factor sign-in** for everyone in the organization.
+5. **Create a repository** for the project: your website, your guides, or a tool. We help you move existing files in. Public is best for volunteer work; private works too.
+6. **Add the basics:** a README (what it's for), a license, and a CONTRIBUTING file ([healthy contributions](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions)).
+7. **[Secure it](/handbook/secure-your-repository)**, add the [two files](/handbook/templates), and install our app.
+8. **Post your first three tasks** with us.
 
-We do this with you on a call when you join. It takes about an hour.
+We do this with you on a call when you join. It takes about an hour. Our full standard is in [Working with GitHub and AI](/handbook/github-best-practice).

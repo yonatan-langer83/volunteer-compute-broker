@@ -19,7 +19,9 @@ This handbook is the shared agreement. It's written the way a good nonprofit onb
 | **Volunteer Pool (us)** | Vets organizations, checks every brief, enforces the plan and scope, scans each change, opens the pull request, keeps the record, runs the routines below. | Who may take part. Pausing a task, a volunteer or a project that breaks the rules. |
 | **GitHub** | Holds the project, the proposed change, the checks and the review. | Nothing by itself: it enforces the rules the organization switches on. |
 
-The short version: **AI changes who does the work, not who owns the result.** The organization stays accountable for what it merges, and the volunteer for how they use their AI.
+The short version: **AI changes who does the work, not who owns the result.** The organization stays accountable for what it merges, and the volunteer for how they use their AI. We treat AI work as a contribution, like anyone's: no extra suspicion, no extra trust.
+
+**Digital volunteering is volunteering.** Less physical doesn't mean less giving. A fixed sign-up form or a translated guide helps a nonprofit as surely as an afternoon at the food bank.
 
 ## Every task follows the same loop
 
@@ -40,6 +42,7 @@ The short version: **AI changes who does the work, not who owns the result.** Th
 - [What is GitHub?](/handbook/what-is-github): in plain words, for organizations new to it.
 - [Secure your repository in 5 minutes](/handbook/secure-your-repository): the settings that make review an enforced gate.
 - [Safety and quality](/handbook/safety-and-quality): how work is checked, how spam is kept out, which AI tools can take part.
+- [Working with GitHub and AI](/handbook/github-best-practice): our best practice, the must-haves, and how it follows GitHub's own guidance.
 - [What happens when…](/handbook/what-happens-when): 30 situations, and who does what in each.
 - [Open source for nonprofits](/handbook/open-source): what it is, its limits, project ideas and good free tools.
 - [Templates](/handbook/templates): ready-made files for your repository.

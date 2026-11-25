@@ -136,6 +136,12 @@ strong { color: var(--ink); }
 .pill-busy, .status.busy { background: var(--vest-wash); color: var(--wait); }
 .pill-waiting, .status.waiting { background: var(--wash); color: var(--muted); }
 
+/* ---------- principles ---------- */
+.principles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); padding-block: var(--s2) var(--s6); }
+.principle { margin: 0; font-size: clamp(1.15rem, 1.05rem + .5vw, 1.4rem); line-height: 1.45; color: var(--text); padding-inline-start: var(--s3); border-inline-start: 4px solid var(--vest); }
+.principle strong { display: block; margin-bottom: 4px; }
+@media (max-width: 760px) { .principles { grid-template-columns: 1fr; } }
+
 /* ---------- balance (counts) ---------- */
 .balance { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); margin: 0; }
 .balance div { padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r); background: var(--paper); }
