@@ -54,7 +54,7 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["BrokerObject"]
+      "new_sqlite_classes": ["BrokerObject"]
     },
     {
       "tag": "v2",
